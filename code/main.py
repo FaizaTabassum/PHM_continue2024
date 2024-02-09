@@ -72,8 +72,8 @@ class constraints:
 
 @profile
 def main():
-    N_sec = 31
-    N_nodes = 31
+    N_sec = 33
+    N_nodes = 33
     time_plot = 0.5
     sample_time = 1e-03
     path_save = r'C:\Users\Faiza\Desktop\PH_simvascular\1D_porthamiltonian_FSI\analytical_solution'
@@ -89,7 +89,7 @@ def main():
     parameter = {
         'stenosis': False,
         'expansion': True,
-        'grad': 150,
+        'grad': 120,
         'FEM': True,
         'geo_dissipation': True,
         'geo_factor': 0,
@@ -148,25 +148,37 @@ def main():
         method='BDF',
         vectorized=False
     )
+    print(PHFSI.stat_pressure[0,-1])
+    print(PHFSI.stat_pressure[1, -1])
     plt.figure()
     plt.title('stat pressure')
     plt.plot(PHFSI.stat_pressure[:,-1])
     plt.figure()
-    plt.title('radius')
-    plt.plot(PHFSI.c_sec)
+    plt.title('Fluss')
+    plt.plot(PHFSI.inp_val[0, :])
+    # plt.figure()
+    # plt.title('A_n')
+    # plt.plot(PHFSI.A_n)
     plt.figure()
-    plt.title('V')
-    plt.plot(PHFSI.V_sec[:, -1])
+    plt.title('density node')
+    plt.plot(PHFSI.r_n_save[:,-1])
     plt.figure()
-    plt.title('A_n')
-    plt.plot(PHFSI.A_n)
-    plt.figure()
-    plt.title('A_circ, is the old one')
-    plt.plot(PHFSI.A_circ[:, -1])
-    plt.figure()
-    plt.title('A_c, new one')
-    plt.plot(PHFSI.A_c[:, -1])
+    plt.title('structure velocity ')
+    plt.plot(PHFSI.H_i_st[:, -1])
+    # plt.figure()
+    # plt.title('fluid momentum')
+    # plt.plot(PHFSI.section_mom_save[:, -1])
+    # plt.figure()
+    # plt.title('mass node')
+    # plt.plot(PHFSI.mass_node_save[:, -1])
+    # plt.figure()
+    # plt.title('volume node')
+    # plt.plot(PHFSI.Volume_node_save[:, -1])
+    # plt.figure()
+    # plt.title('radius section')
+    # plt.plot(PHFSI.radius_sec_save[:, -1])
     plt.show()
+    stop = True
 
 
 if __name__ == '__main__':

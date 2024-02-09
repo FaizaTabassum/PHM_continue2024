@@ -26,48 +26,26 @@ from profilehooks import profile
 import copy
 from collections import deque
 import pandas as pd
+def getNodesVolumes(section_radius, section_length, node_length):
+    radius_section_start = section_radius[0:-1]  # wo die section beginnt
+    radius_section_end = section_radius[1:] # dort wo die section endet
+    slope = radius_section_end - radius_section_start / section_length  # steigung in der section
+    slope_left_node_part = slope[0:-1]  # slope_leftpart_node
+    slope_right_node_part = slope[1:]  # slope_rightpart_node
+    radius_at_mid_node = radius_section_start[1:]
 
-def comment_out_lines():
-    l_node = -0.333333333333333 * (
-            -6.0 * slope_left_part * radius_at_mid_node + 6.0 * slope_right_part * radius_at_mid_node) / (
-                     slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) - 5.15732092623642e-6 * (
-                     -36.0 * radius_at_mid_node ** 2 / (
-                     slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) + 36.0 * (
-                             -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 2 / (
-                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2) / (
-                     -V_node / (
-                     5235987755983.0 * slope_left_part ** 2 - 5235987755983.0 * slope_left_part * slope_right_part + 5235987755983.0 * slope_right_part ** 2) - 2.0e-13 * radius_at_mid_node ** 2 * (
-                             -6.0 * slope_left_part * radius_at_mid_node + 6.0 * slope_right_part * radius_at_mid_node) / (
-                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2 + 8.0e-13 * (
-                             -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 3 / (
-                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 3 + (
-                             -6.4e-25 * (-radius_at_mid_node ** 2 / (
-                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) + (
-                                                 -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 2 / (
-                                                 slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2) ** 3 + (
-                                     -V_node / (
-                                     5235987755983.0 * slope_left_part ** 2 - 5235987755983.0 * slope_left_part * slope_right_part + 5235987755983.0 * slope_right_part ** 2) - 2.0e-13 * radius_at_mid_node ** 2 * (
-                                             -6.0 * slope_left_part * radius_at_mid_node + 6.0 * slope_right_part * radius_at_mid_node) / (
-                                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2 + 8.0e-13 * (
-                                             -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 3 / (
-                                             slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 3) ** 2) ** 0.5) ** (
-                     1 / 3) - 21544.3469003188 * (-V_node / (
-            5235987755983.0 * slope_left_part ** 2 - 5235987755983.0 * slope_left_part * slope_right_part + 5235987755983.0 * slope_right_part ** 2) - 2.0e-13 * radius_at_mid_node ** 2 * (
-                                                          -6.0 * slope_left_part * radius_at_mid_node + 6.0 * slope_right_part * radius_at_mid_node) / (
-                                                          slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2 + 8.0e-13 * (
-                                                          -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 3 / (
-                                                          slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 3 + (
-                                                          -6.4e-25 * (-radius_at_mid_node ** 2 / (
-                                                          slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) + (
-                                                                              -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 2 / (
-                                                                              slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2) ** 3 + (
-                                                                  -V_node / (
-                                                                  5235987755983.0 * slope_left_part ** 2 - 5235987755983.0 * slope_left_part * slope_right_part + 5235987755983.0 * slope_right_part ** 2) - 2.0e-13 * radius_at_mid_node ** 2 * (
-                                                                          -6.0 * slope_left_part * radius_at_mid_node + 6.0 * slope_right_part * radius_at_mid_node) / (
-                                                                          slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 2 + 8.0e-13 * (
-                                                                          -slope_left_part * radius_at_mid_node + slope_right_part * radius_at_mid_node) ** 3 / (
-                                                                          slope_left_part ** 2 - slope_left_part * slope_right_part + slope_right_part ** 2) ** 3) ** 2) ** 0.5) ** (
-                     1 / 3)  #
+
+
+    radius_node0_end = radius_section_start[0] + (node_length / 2) * slope_left_node_part[0]
+    radius_node_start = radius_at_mid_node - (node_length / 2) * slope_left_node_part
+    radius_node_end = radius_at_mid_node + (node_length / 2) * slope_right_node_part
+    V_node_left_part = 1 / 3 * np.pi * (node_length / 2) * np.square(radius_node_start + radius_at_mid_node)
+    V_node_right_part = 1 / 3 * np.pi * (node_length / 2) * np.square(radius_node_end + radius_at_mid_node)
+    V_node0_left = 1 / 3 * np.pi * (node_length / 2) * np.square(
+        radius_node0_end + radius_section_start[0])
+    return radius_node0_end, radius_node_start, radius_node_end, V_node0_left, V_node_left_part, V_node_right_part
+
+
 
 def get_stenosis_c_sec(N_sec,L, c, s_grad):
     x0 = -L*100/2
@@ -114,27 +92,6 @@ def get_expansion_c_sec(N_sec,L, c, s_grad):
     last_radius = m * (r[-1] - r[-2]) + r[-1]
     return r / 100, last_radius/100
 
-
-def getNodesVolumes(section_radius, section_length, node_length):
-    radius_section_start = section_radius[0:-1]  # wo die section beginnt
-    radius_section_end = section_radius[1:] # dort wo die section endet
-    slope = radius_section_end - radius_section_start / section_length  # steigung in der section
-    slope_left_node_part = slope[0:-1]  # slope_leftpart_node
-    slope_right_node_part = slope[1:]  # slope_rightpart_node
-    radius_at_mid_node = radius_section_start[1:]
-
-
-
-    radius_node0_end = radius_section_start[0] + (node_length / 2) * slope_left_node_part[0]
-    radius_node_start = radius_at_mid_node - (node_length / 2) * slope_left_node_part
-    radius_node_end = radius_at_mid_node + (node_length / 2) * slope_right_node_part
-    V_node_left_part = 1 / 3 * np.pi * (node_length / 2) * np.square(radius_node_start + radius_at_mid_node)
-    V_node_right_part = 1 / 3 * np.pi * (node_length / 2) * np.square(radius_node_end + radius_at_mid_node)
-    V_node0_left = 1 / 3 * np.pi * (node_length / 2) * np.square(
-        radius_node0_end + radius_section_start[0])
-    return radius_node0_end, radius_node_start, radius_node_end, V_node0_left, V_node_left_part, V_node_right_part
-
-
 class Model_Flow_Efficient:
     def __init__(self,pdic):
         self.am1_0_vol = 1
@@ -149,7 +106,7 @@ class Model_Flow_Efficient:
 
         self.u_e = pdic['u_e']
         self.l = pdic['L'] / self.N_sec
-        self.length_node = 10**3*self.l
+        self.length_node = self.l*10**-3
         self.c_sec = pdic['c'] * np.ones(self.N_sec)
 
 
@@ -159,7 +116,7 @@ class Model_Flow_Efficient:
             self.c_sec, self.last_radius = get_expansion_c_sec(self.N_sec, pdic['L'], pdic['c'], pdic['grad'])
 
         self.c_sec_end = np.hstack((self.c_sec[1:], self.last_radius))
-        self.section_radius_complete = np.hstack((self.c_sec, self.last_radius))
+
         self.h = pdic['h']
 
         self.poi_rat = pdic['poi_rat']
@@ -195,9 +152,13 @@ class Model_Flow_Efficient:
         self.m_st = np.multiply(np.pi * pdic['rho_st'] * self.c_sec,  pdic['h'] * self.l * np.ones(self.N_sec))
         self.d_st = pdic['d_st'] * np.ones(self.N_sec)
         self.d_c_st = pdic['d_c_st'] * np.ones(self.N_sec)  # coupling damping coefficient of structure
-        radius_node0_end, radius_node_start, radius_node_end, self.volume_node0, self.volume_node_leftpart, self.volume_node_rightpart = getNodesVolumes(self.section_radius_complete, self.l, self.length_node)
-        volume_nodes_complete = np.hstack((self.volume_node0, self.volume_node_leftpart+self.volume_node_rightpart))
+        self.section_radius_complete = np.hstack((self.c_sec, self.last_radius))
+        radius_node0_end, radius_node_start, radius_node_end, self.volume_node0, self.volume_node_leftpart, self.volume_node_rightpart = getNodesVolumes(
+            self.section_radius_complete, self.l, self.length_node)
+        volume_nodes_complete = np.hstack((self.volume_node0, self.volume_node_leftpart + self.volume_node_rightpart))
         self.m_n = np.multiply(pdic['rho_f'], volume_nodes_complete)
+        #self.m_n = np.multiply(pdic['rho_f'] * np.pi * np.square(self.c_sec),  self.l * 10 ** -3 * np.ones(self.N_nodes))
+       # self.m_n[0] = self.m_n[0] /2
         self.r_sec = pdic['rho_f']
         self.vf = pdic['vf']
         self.b_st = pdic['b_st']
@@ -207,6 +168,12 @@ class Model_Flow_Efficient:
         self.dyn_pressure_mmHg = np.empty((self.N_nodes, int(self.samples)))
         self.stat_pressure = np.empty((self.N_nodes, int(self.samples)))
         self.stat_pressure_mmHg = np.empty((self.N_nodes, int(self.samples)))
+        self.r_n_save = np.empty((self.N_nodes, int(self.samples)))
+        self.section_mom_save = np.empty((self.N_nodes, int(self.samples)))
+        self.wall_mom_save = np.empty((self.N_nodes, int(self.samples)))
+        self.radius_sec_save = np.empty((self.N_nodes, int(self.samples)))
+        self.mass_node_save = np.empty((self.N_nodes, int(self.samples)))
+        self.Volume_node_save = np.empty((self.N_nodes, int(self.samples)))
         self.total_pressure = np.empty((self.N_nodes, int(self.samples)))
         self.total_pressure_mmHg = np.empty((self.N_nodes, int(self.samples)))
 
@@ -408,13 +375,19 @@ class Model_Flow_Efficient:
 
         radius_section_start = self.c_sec + q_st
         radius_section_end = np.hstack((self.c_sec[1:], self.last_radius))
-        section_radius_complete = np.hstack((self.c_sec+q_st, self.last_radius+q_st[-1]))
-        radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(section_radius_complete, self.l, self.length_node)
+        section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
+        radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
+            section_radius_complete, self.l, self.length_node)
+        l_node = self.length_node
+        r_node_end = radius_node_end
+        r_node_start = radius_node_start
+        r_node0_end = radius_node0_end
+        V_node0_left = V_node0
 
         V_sec = 1 / 3 * np.pi * self.l * np.square(
             radius_section_start[1:-1] + radius_section_end[1:-1]) - V_node_left_part[1:] - V_node_right_part[0:-1]
         V_sec = np.concatenate((np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0 -
+            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0_left -
             V_node_left_part[0], (1,)), V_sec, np.reshape(
             1 / 3 * np.pi * self.l * np.square(radius_section_start[-1] + radius_section_end[-1]) - V_node_right_part[
                 -1],
@@ -423,21 +396,14 @@ class Model_Flow_Efficient:
         A_n_old = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0])), (1,)),
                              self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
 
-        A_n = (self.m_n[1:] * (3 / self.length_node) * np.sqrt(np.square(radius_node_end - radius_node_start) + np.square(self.length_node))) / (
-                    r_n[1:] * (radius_node_start + radius_node_end))
-        A_n0 = (self.m_n[0] * (3 * 2 / self.length_node) * np.sqrt(
-            np.square(radius_section_start[0] - radius_node0_end) + np.square(self.length_node / 2))) / (
-                           r_n[0] * (radius_section_start[0] + radius_node0_end))
+        A_n = (self.m_n[1:] * (3 / l_node) * np.sqrt(np.square(r_node_end - r_node_start) + np.square(l_node))) / (
+                    r_n[1:] * (r_node_start + r_node_end))
+        A_n0 = (self.m_n[0] * (3 * 2 / l_node) * np.sqrt(
+            np.square(radius_section_start[0] - r_node0_end) + np.square(l_node / 2))) / (
+                           r_n[0] * (radius_section_start[0] + r_node0_end))
         A_n = np.hstack((A_n0, A_n))
 
-        print('A_n old 0: ', A_n_old[0], '\n A_n new 0', A_n[0])
-        print('A_n old 1: ', A_n_old[1], '\n A_n new 1', A_n[1])
-        surface_line = np.sqrt(
-            np.square(((self.c_sec[1:] + q_st[1:]) - (self.c_sec[0:-1] + q_st[0:-1]))) + np.square(self.l))
-        surface_line = np.hstack((surface_line, np.reshape(
-            np.sqrt(np.square((self.last_radius + q_st[-1]) - (self.c_sec[-1] + q_st[-1])) + np.square(self.l)), (1,))))
-        A_circ = np.pi * (np.hstack((self.c_sec[1:] + q_st[1:],
-                                     np.reshape(self.last_radius + q_st[-1], (1,)))) + self.c_sec + q_st) * surface_line
+        A_circ = (radius_section_start +radius_section_end)*np.pi*np.sqrt(np.square(radius_section_end-radius_section_start) +np.square(self.l))
 
         alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
         alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
@@ -453,7 +419,6 @@ class Model_Flow_Efficient:
                          np.reshape(A_circ[-1] - A_n[-1] * (
                                  V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
                                     (-1,))))  # check
-        A_circ = A_c_old
         alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
 
         ##hier ist ein Fehler##
@@ -579,6 +544,7 @@ class Model_Flow_Efficient:
         g_P_4 = np.concatenate((gamma, np.zeros((self.N_sec, self.N_sec))), axis=1)
         g_P = np.concatenate((g_P_1, g_P_2, g_P_3, g_P_4))
         x_vec = np.concatenate((H_q_st, H_i_st, H_i_sec, H_r_n))
+
         u = np.concatenate((u_p, self.u_e))
         dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
         return dxdt
@@ -810,49 +776,44 @@ class Model_Flow_Efficient:
         section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
         radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
             section_radius_complete, self.l, self.length_node)
-
+        l_node = self.length_node
+        r_node_end = radius_node_end
+        r_node_start = radius_node_start
+        r_node0_end = radius_node0_end
+        V_node0_left = V_node0
+        volume_node_complete = np.hstack((V_node0, V_node_left_part+V_node_right_part))
         V_sec = 1 / 3 * np.pi * self.l * np.square(
             radius_section_start[1:-1] + radius_section_end[1:-1]) - V_node_left_part[1:] - V_node_right_part[0:-1]
         V_sec = np.concatenate((np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0 -
+            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0_left -
             V_node_left_part[0], (1,)), V_sec, np.reshape(
             1 / 3 * np.pi * self.l * np.square(radius_section_start[-1] + radius_section_end[-1]) - V_node_right_part[
                 -1],
             (1,))))  # check
 
+
         A_n_old = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0])), (1,)),
                              self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
 
-        A_n = (self.m_n[1:] * (3 / self.length_node) * np.sqrt(
-            np.square(radius_node_end - radius_node_start) + np.square(self.length_node))) / (
-                      r_n[1:] * (radius_node_start + radius_node_end))
-        A_n0 = (self.m_n[0] * (3 * 2 / self.length_node) * np.sqrt(
-            np.square(radius_section_start[0] - radius_node0_end) + np.square(self.length_node / 2))) / (
-                       r_n[0] * (radius_section_start[0] + radius_node0_end))
+        A_n = (self.m_n[1:]*(3/l_node)*np.sqrt(np.square(r_node_end-r_node_start)+np.square(l_node)))/(r_n[1:]*(r_node_start + r_node_end))
+        A_n0 = (self.m_n[0]*(3*2/l_node)*np.sqrt(np.square(radius_section_start[0]-r_node0_end)+np.square(l_node/2)))/(r_n[0]*(radius_section_start[0] + r_node0_end))
         A_n = np.hstack((A_n0, A_n))
 
-        print('A_n old 0: ', A_n_old[0], '\n A_n new 0', A_n[0])
-        print('A_n old 1: ', A_n_old[1], '\n A_n new 1', A_n[1])
-        surface_line = np.sqrt(
-            np.square(((self.c_sec[1:] + q_st[1:]) - (self.c_sec[0:-1] + q_st[0:-1]))) + np.square(self.l))
-        surface_line = np.hstack((surface_line, np.reshape(
-            np.sqrt(np.square((self.last_radius + q_st[-1]) - (self.c_sec[-1] + q_st[-1])) + np.square(self.l)), (1,))))
-        A_circ = np.pi * (np.hstack((self.c_sec[1:] + q_st[1:],
-                                     np.reshape(self.last_radius + q_st[-1], (1,)))) + self.c_sec + q_st) * surface_line
+
+        A_circ = (radius_section_start +radius_section_end)*np.pi*np.sqrt(np.square(radius_section_end-radius_section_start) +np.square(self.l))
 
         alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
         alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        A_c_old = np.hstack(
-            (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
-             np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
+        A_c_old = np.hstack((np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
+                         np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
         A_c = np.hstack((np.reshape(
-            A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
+            A_cross_start[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
                          A_circ[1:-1] - A_n[1:-1] * (
-                                 V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
-                                                                                                               2:] * (
-                                 V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
+                                     V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
+                                                                                                                   2:] * (
+                                     V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
                          np.reshape(A_circ[-1] - A_n[-1] * (
-                                 V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
+                                     V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
                                     (-1,))))  # check
         A_circ = A_c_old
         alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
@@ -983,6 +944,7 @@ class Model_Flow_Efficient:
         u = np.concatenate((u_p, self.u_e))
         dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
         y = np.dot(g_P.T, x_vec)
+
         self.A_sec[:, i] = A_sec
 
         self.V_sec[:, i] = V_sec
@@ -997,10 +959,17 @@ class Model_Flow_Efficient:
 
         self.stat_pressure[:, i] = log_A
         self.stat_pressure_mmHg[:, i] = log_A / self.mmHgFactor
+        self.r_n_save[:, i] = r_n
+        self.section_mom_save[:, i] = i_sec
+        self.wall_mom_save[:, i] = i_st
+        self.mass_node_save[:, i] = self.m_n
+        self.radius_sec_save[:, i] = q_st
+        self.Volume_node_save[:, i] = volume_node_complete
         self.dyn_pressure[:, i] = p_d
         self.dyn_pressure_mmHg[:, i] = p_d / self.mmHgFactor
         self.total_pressure[:, i] = log_A + p_d
         self.total_pressure_mmHg[:, i] = (log_A / self.mmHgFactor) + (p_d / self.mmHgFactor)
+        print('der Fluss ist:', float(self.inp_ent(t)))
         self.inp_val[i, 0] = float(self.inp_ent(t))
         self.inp_val[i, 1] = float(self.inp_ext(t))
         self.out_val[i, 0] = y[0]
