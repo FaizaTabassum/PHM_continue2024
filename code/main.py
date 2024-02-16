@@ -72,8 +72,8 @@ class constraints:
 
 @profile
 def main():
-    N_sec = 33
-    N_nodes = 33
+    N_sec = 15
+    N_nodes = 15
     time_plot = 0.5
     sample_time = 1e-03
     path_save = r'C:\Users\Faiza\Desktop\PH_simvascular\1D_porthamiltonian_FSI\analytical_solution'
@@ -89,7 +89,7 @@ def main():
     parameter = {
         'stenosis': False,
         'expansion': True,
-        'grad': 120,
+        'grad': 110,
         'FEM': True,
         'geo_dissipation': True,
         'geo_factor': 0,
@@ -153,18 +153,18 @@ def main():
     plt.figure()
     plt.title('stat pressure')
     plt.plot(PHFSI.stat_pressure[:,-1])
-    plt.figure()
-    plt.title('Fluss')
-    plt.plot(PHFSI.inp_val[0, :])
+    # plt.figure()
+    # plt.title('Fluss')
+    # plt.plot(PHFSI.inp_val[0, :])
     # plt.figure()
     # plt.title('A_n')
     # plt.plot(PHFSI.A_n)
-    plt.figure()
-    plt.title('density node')
-    plt.plot(PHFSI.r_n_save[:,-1])
-    plt.figure()
-    plt.title('structure velocity ')
-    plt.plot(PHFSI.H_i_st[:, -1])
+    # plt.figure()
+    # plt.title('density node')
+    # plt.plot(PHFSI.r_n_save[:,-1])
+    # plt.figure()
+    # plt.title('structure velocity ')
+    # plt.plot(PHFSI.H_i_st[:, -1])
     # plt.figure()
     # plt.title('fluid momentum')
     # plt.plot(PHFSI.section_mom_save[:, -1])
@@ -177,6 +177,31 @@ def main():
     # plt.figure()
     # plt.title('radius section')
     # plt.plot(PHFSI.radius_sec_save[:, -1])
+    # plt.figure()
+    # plt.title('vol sec neu')
+    # plt.plot(PHFSI.V_sec[:, -1])
+    # plt.figure()
+    # plt.title('vol sec old')
+    # plt.plot(PHFSI.V_sec_old[:, -1])
+    # plt.figure()
+    # plt.title('contact area sec neu')
+    # plt.plot(PHFSI.A_c[:, -1])
+    # plt.figure()
+    # plt.title('contact area sec old')
+    # plt.plot(PHFSI.A_c_old[:, -1])
+    # plt.figure()
+    # plt.title('Fläche sec neu')
+    # plt.plot(PHFSI.A_sec[:, -1])
+    # plt.figure()
+    # plt.title('Fläche sec old')
+    # plt.plot(PHFSI.A_sec_old[:, -1])
+    # plt.figure()
+    # plt.title('Fläche Nodes neu')
+    # plt.plot(PHFSI.A_n[:, -1])
+    #
+    # plt.figure()
+    # plt.title('Fläche Nodes alt')
+    # plt.plot(PHFSI.A_n_old[:, -1])
     plt.show()
     stop = True
 

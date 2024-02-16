@@ -29,7 +29,7 @@ import pandas as pd
 def getNodesVolumes(section_radius, section_length, node_length):
     radius_section_start = section_radius[0:-1]  # wo die section beginnt
     radius_section_end = section_radius[1:] # dort wo die section endet
-    slope = radius_section_end - radius_section_start / section_length  # steigung in der section
+    slope = (radius_section_end - radius_section_start) / section_length  # steigung in der section
     slope_left_node_part = slope[0:-1]  # slope_leftpart_node
     slope_right_node_part = slope[1:]  # slope_rightpart_node
     radius_at_mid_node = radius_section_start[1:]
@@ -44,6 +44,12 @@ def getNodesVolumes(section_radius, section_length, node_length):
     V_node0_left = 1 / 3 * np.pi * (node_length / 2) * np.square(
         radius_node0_end + radius_section_start[0])
     return radius_node0_end, radius_node_start, radius_node_end, V_node0_left, V_node_left_part, V_node_right_part
+
+def SquareOfPosSumVectors(vec1, vec2):
+    return np.square(vec1) + 2*vec1*vec2 + np.square(vec2)
+def SquareOfNegSumVectors(vec1, vec2):
+    return np.square(vec1) - 2*vec1*vec2 + np.square(vec2)
+
 
 
 
@@ -157,8 +163,10 @@ class Model_Flow_Efficient:
             self.section_radius_complete, self.l, self.length_node)
         volume_nodes_complete = np.hstack((self.volume_node0, self.volume_node_leftpart + self.volume_node_rightpart))
         self.m_n = np.multiply(pdic['rho_f'], volume_nodes_complete)
+
+
         #self.m_n = np.multiply(pdic['rho_f'] * np.pi * np.square(self.c_sec),  self.l * 10 ** -3 * np.ones(self.N_nodes))
-       # self.m_n[0] = self.m_n[0] /2
+        #self.m_n[0] = self.m_n[0] /2
         self.r_sec = pdic['rho_f']
         self.vf = pdic['vf']
         self.b_st = pdic['b_st']
@@ -186,9 +194,13 @@ class Model_Flow_Efficient:
         self.inp_val = np.empty((int(self.samples), 2))
         self.out_val = np.empty((int(self.samples), 2))
         self.A_sec = np.empty((self.N_sec, int(self.samples)))
+        self.A_sec_old = np.empty((self.N_sec, int(self.samples)))
+        self.V_sec_old = np.empty((self.N_sec, int(self.samples)))
         self.V_sec = np.empty((self.N_sec, int(self.samples)))
         self.A_n = np.empty((self.N_nodes, int(self.samples)))
+        self.A_n_old = np.empty((self.N_nodes, int(self.samples)))
         self.A_c = np.empty((self.N_sec, int(self.samples)))
+        self.A_c_old = np.empty((self.N_sec, int(self.samples)))
         self.A_circ = np.empty((self.N_sec, int(self.samples)))
         self.p_d = np.empty((self.N_nodes, int(self.samples)))
 
@@ -370,11 +382,12 @@ class Model_Flow_Efficient:
         i_sec = x[2 * self.N_sec:3 * self.N_sec]
         r_n = x[3 * self.N_sec:]
 
+
         A_sec = np.multiply(np.pi * self.c_sec, (q_st + self.c_sec))
         A_cross_start = np.multiply(np.pi * (self.c_sec + q_st), (q_st + self.c_sec))
 
         radius_section_start = self.c_sec + q_st
-        radius_section_end = np.hstack((self.c_sec[1:], self.last_radius))
+        radius_section_end = np.hstack((self.c_sec[1:] + q_st[1:], self.last_radius))
         section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
         radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
             section_radius_complete, self.l, self.length_node)
@@ -382,43 +395,64 @@ class Model_Flow_Efficient:
         r_node_end = radius_node_end
         r_node_start = radius_node_start
         r_node0_end = radius_node0_end
-        V_node0_left = V_node0
 
-        V_sec = 1 / 3 * np.pi * self.l * np.square(
-            radius_section_start[1:-1] + radius_section_end[1:-1]) - V_node_left_part[1:] - V_node_right_part[0:-1]
+        alpha0_leftnode = (V_node_left_part[0] / (V_node_left_part[0] + V_node_right_part[0]))
+        alpha_leftnode = (
+                V_node_left_part / (V_node_left_part + V_node_right_part))
+        alpha_rightnode = (
+                V_node_right_part / (V_node_right_part + V_node_left_part))
+
+        V_sec = 1 / 3 * np.pi * self.l * (
+                np.square(radius_section_start[1:-1]) + radius_section_start[1:-1] * radius_section_end[
+                                                                                     1:-1] + np.square(
+            radius_section_end[1:-1])) - (self.m_n[2:] / r_n[2:]) * alpha_leftnode[1:] - (
+                        self.m_n[1:-1] / r_n[1:-1]) * alpha_rightnode[0:-1]
+
         V_sec = np.concatenate((np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0_left -
-            V_node_left_part[0], (1,)), V_sec, np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[-1] + radius_section_end[-1]) - V_node_right_part[
-                -1],
-            (1,))))  # check
+            1 / 3 * np.pi * self.l * (
+                    np.square(radius_section_start[0]) + radius_section_start[0] * radius_section_end[
+                0] + np.square(radius_section_end[0])) - (
+                    self.m_n[0] / r_n[0]) -
+            (self.m_n[1] / r_n[1]) * alpha0_leftnode, (1,)), V_sec,
+                                np.reshape(
+                                    1 / 3 * np.pi * self.l * (np.square(
+                                        radius_section_start[-1]) + radius_section_start[-1] * radius_section_end[
+                                                                  -1] + np.square(radius_section_end[-1])) - (
+                                            self.m_n[-1] / r_n[-1]) * alpha_rightnode[-1],
+                                    (1,))))  # check
 
-        A_n_old = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0])), (1,)),
-                             self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
 
-        A_n = (self.m_n[1:] * (3 / l_node) * np.sqrt(np.square(r_node_end - r_node_start) + np.square(l_node))) / (
-                    r_n[1:] * (r_node_start + r_node_end))
-        A_n0 = (self.m_n[0] * (3 * 2 / l_node) * np.sqrt(
-            np.square(radius_section_start[0] - r_node0_end) + np.square(l_node / 2))) / (
-                           r_n[0] * (radius_section_start[0] + r_node0_end))
+        A_n = ((3 * self.m_n[1:] / (r_n[1:] * l_node)) * np.sqrt(
+            SquareOfNegSumVectors(r_node_end, r_node_start) + np.square(l_node)) * (r_node_start + r_node_end)) / (
+              (np.square(r_node_start) + r_node_start * r_node_end + np.square(r_node_end)))
+        A_n0 = ((3 * 2 * self.m_n[0] / (r_n[0] * l_node)) * np.sqrt(
+            SquareOfNegSumVectors(radius_section_start[0], r_node0_end) + np.square(l_node / 2)) * (
+                            radius_section_start[0] + r_node0_end)) / (
+                           np.square(radius_section_start[0]) + radius_section_start[0] * r_node0_end + np.square(
+                       r_node0_end))
         A_n = np.hstack((A_n0, A_n))
-
-        A_circ = (radius_section_start +radius_section_end)*np.pi*np.sqrt(np.square(radius_section_end-radius_section_start) +np.square(self.l))
-
-        alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        A_c_old = np.hstack(
-            (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
-             np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
-        A_c = np.hstack((np.reshape(
-            A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
-                         A_circ[1:-1] - A_n[1:-1] * (
-                                 V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
-                                                                                                               2:] * (
-                                 V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
-                         np.reshape(A_circ[-1] - A_n[-1] * (
-                                 V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
-                                    (-1,))))  # check
+        #
+        A_circ = (radius_section_start + radius_section_end) * np.pi * np.sqrt(
+            SquareOfNegSumVectors(radius_section_end, radius_section_start) + np.square(self.l))
+        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
+        A_c = np.concatenate((np.reshape(A_circ[0] - A_n[0] - A_n[1] * alpha0_leftnode, (1,)), A_c_between,
+                                 np.reshape(A_circ[-1] - A_n[-1] * alpha_rightnode[-1], (1,))))
+        #
+        # alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
+        # alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
+        # A_c_old = np.hstack(
+        #     (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
+        #      np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
+        # A_c = np.hstack((np.reshape(
+        #     A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
+        #                  A_circ[1:-1] - A_n[1:-1] * (
+        #                          V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
+        #                                                                                                        2:] * (
+        #                          V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
+        #                  np.reshape(A_circ[-1] - A_n[-1] * (
+        #                          V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
+        #                             (-1,))))  # check
+        # A_c = A_circ
         alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
 
         ##hier ist ein Fehler##
@@ -767,12 +801,12 @@ class Model_Flow_Efficient:
         i_st = x[self.N_sec:2 * self.N_sec]
         i_sec = x[2 * self.N_sec:3 * self.N_sec]
         r_n = x[3 * self.N_sec:]
-
         A_sec = np.multiply(np.pi * self.c_sec, (q_st + self.c_sec))
+
         A_cross_start = np.multiply(np.pi * (self.c_sec + q_st), (q_st + self.c_sec))
 
         radius_section_start = self.c_sec + q_st
-        radius_section_end = np.hstack((self.c_sec[1:], self.last_radius))
+        radius_section_end = np.hstack((self.c_sec[1:]+q_st[1:], self.last_radius))
         section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
         radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
             section_radius_complete, self.l, self.length_node)
@@ -782,40 +816,63 @@ class Model_Flow_Efficient:
         r_node0_end = radius_node0_end
         V_node0_left = V_node0
         volume_node_complete = np.hstack((V_node0, V_node_left_part+V_node_right_part))
-        V_sec = 1 / 3 * np.pi * self.l * np.square(
-            radius_section_start[1:-1] + radius_section_end[1:-1]) - V_node_left_part[1:] - V_node_right_part[0:-1]
+        alpha0_leftnode = (V_node_left_part[0] / (V_node_left_part[0] + V_node_right_part[0]))
+        alpha_leftnode = (
+                        V_node_left_part / (V_node_left_part + V_node_right_part))
+        alpha_rightnode =(
+                        V_node_right_part / (V_node_right_part + V_node_left_part))
+
+        V_sec = 1 / 3 * np.pi * self.l * (
+                np.square(radius_section_start[1:-1]) + radius_section_start[1:-1] * radius_section_end[
+                                                                                         1:-1] + np.square(
+            radius_section_end[1:-1])) - (self.m_n[2:] / r_n[2:]) * alpha_leftnode[1:] - (
+                        self.m_n[1:-1] / r_n[1:-1]) * alpha_rightnode[0:-1]
+
+
         V_sec = np.concatenate((np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[0] + radius_section_end[0]) - V_node0_left -
-            V_node_left_part[0], (1,)), V_sec, np.reshape(
-            1 / 3 * np.pi * self.l * np.square(radius_section_start[-1] + radius_section_end[-1]) - V_node_right_part[
-                -1],
-            (1,))))  # check
+            1 / 3 * np.pi * self.l * (
+                        np.square(radius_section_start[0]) + radius_section_start[0] * radius_section_end[
+                    0] + np.square(radius_section_end[0])) - (
+                    self.m_n[0] / r_n[0]) -
+            (self.m_n[1] / r_n[1]) * alpha0_leftnode, (1,)), V_sec,
+                                np.reshape(
+                                    1 / 3 * np.pi * self.l * (np.square(
+                                        radius_section_start[-1]) + radius_section_start[-1] * radius_section_end[
+                                                                  -1] + np.square(radius_section_end[-1])) - (
+                                            self.m_n[-1] / r_n[-1]) * alpha_rightnode[-1],
+                                    (1,))))  # check
 
-
-        A_n_old = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0])), (1,)),
-                             self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
-
-        A_n = (self.m_n[1:]*(3/l_node)*np.sqrt(np.square(r_node_end-r_node_start)+np.square(l_node)))/(r_n[1:]*(r_node_start + r_node_end))
-        A_n0 = (self.m_n[0]*(3*2/l_node)*np.sqrt(np.square(radius_section_start[0]-r_node0_end)+np.square(l_node/2)))/(r_n[0]*(radius_section_start[0] + r_node0_end))
+        A_n = ((3 * self.m_n[1:] / (r_n[1:] * l_node)) * np.sqrt(
+            SquareOfNegSumVectors(r_node_end, r_node_start) + np.square(l_node)) * (r_node_start + r_node_end)) / (
+                  (np.square(r_node_start) + r_node_start * r_node_end + np.square(r_node_end)))
+        A_n0 = ((3 * 2 * self.m_n[0] / (r_n[0] * l_node)) * np.sqrt(
+            SquareOfNegSumVectors(radius_section_start[0], r_node0_end) + np.square(l_node / 2)) * (
+                        radius_section_start[0] + r_node0_end)) / (
+                       np.square(radius_section_start[0]) + radius_section_start[0] * r_node0_end + np.square(
+                   r_node0_end))
         A_n = np.hstack((A_n0, A_n))
-
-
-        A_circ = (radius_section_start +radius_section_end)*np.pi*np.sqrt(np.square(radius_section_end-radius_section_start) +np.square(self.l))
-
-        alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        A_c_old = np.hstack((np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
-                         np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
-        A_c = np.hstack((np.reshape(
-            A_cross_start[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
-                         A_circ[1:-1] - A_n[1:-1] * (
-                                     V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
-                                                                                                                   2:] * (
-                                     V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
-                         np.reshape(A_circ[-1] - A_n[-1] * (
-                                     V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
-                                    (-1,))))  # check
-        A_circ = A_c_old
+        #
+        A_circ = (radius_section_start + radius_section_end) * np.pi * np.sqrt(
+            SquareOfNegSumVectors(radius_section_end, radius_section_start) + np.square(self.l))
+        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
+        A_c = np.concatenate((np.reshape(A_circ[0] - A_n[0] - A_n[1] * alpha0_leftnode, (1,)), A_c_between,
+                              np.reshape(A_circ[-1] - A_n[-1] * alpha_rightnode[-1], (1,))))
+        #
+        # alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
+        # alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
+        # A_c_old = np.hstack(
+        #     (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
+        #      np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
+        # A_c = np.hstack((np.reshape(
+        #     A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
+        #                  A_circ[1:-1] - A_n[1:-1] * (
+        #                          V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
+        #                                                                                                        2:] * (
+        #                          V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
+        #                  np.reshape(A_circ[-1] - A_n[-1] * (
+        #                          V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
+        #                             (-1,))))  # check
+        # A_c = A_circ
         alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
 
         ##hier ist ein Fehler##
@@ -946,11 +1003,12 @@ class Model_Flow_Efficient:
         y = np.dot(g_P.T, x_vec)
 
         self.A_sec[:, i] = A_sec
-
         self.V_sec[:, i] = V_sec
         self.A_n[:, i] = A_n
+#        self.A_n_old[:,i] = A_n_old
         self.A_c[:, i] = A_c
-        self.A_circ[:, i] = A_circ
+#        self.A_c_old[:, i] = A_c_old
+        #self.A_circ[:, i] = A_circ
 
         self.H_q_st[:, i] = H_q_st
         self.H_i_st[:, i] = H_i_st
