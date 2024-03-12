@@ -72,11 +72,11 @@ class constraints:
 
 @profile
 def main():
-    N_sec = 15
-    N_nodes = 15
+    N_sec = 31
+    N_nodes = 31
     time_plot = 0.5
     sample_time = 1e-03
-    path_save = r'C:\Users\Faiza\Desktop\PH_simvascular\1D_porthamiltonian_FSI\analytical_solution'
+    path_save = r'C:\Users\Faiza\Desktop\PHM_continue2024\results'
     path_load = r''
     inp_max = 125*10**-6 #max flow input at inlet
     out_max = 0 #max pressure at outlet
@@ -89,15 +89,13 @@ def main():
     parameter = {
         'stenosis': False,
         'expansion': True,
-        'grad': 110,
+        'grad': 100,
         'FEM': True,
-        'geo_dissipation': True,
-        'geo_factor': 0,
         'vis_factor': 16,
         'vis_dissipation': True,
         'inp': cons.inp_const,
         'out': cons.out_const,
-        'L': 5 * 10 ** -2,
+        'L': 20 * 10 ** -2,
         'c': 1* 10 ** -2,
         'h': 3 * 10 ** -4,
 
@@ -105,7 +103,6 @@ def main():
         'N_nodes': N_nodes,
         't_ev': t_ev,
         'samples': cons.samples,
-
         'beta_1': 1.1,
         'beta_2': 8.5 * 10 ** (-5),
         'lame1': 1.7 * 10 ** 6,
@@ -123,14 +120,16 @@ def main():
         'k2': -20,
         'k3': 1*10**9,
         'mmHgFactor': 133.322368421,
-        'stiff_wall': True
+        'stiff_wall': True,
     }
 
+    
 
 
-    PHFSI = func.Model_Flow_Efficient(parameter) #this is for flow, if you want to test Pressure, you need to substitute Flow by Pressure
+    PHFSI = func.Model_Flow_Efficient(parameter)
     T = [0, time_plot]
     x_init = np.concatenate((np.zeros(3*N_sec), parameter['rho_f']*np.ones(N_nodes))).reshape(-1,)
+    
     sol = solve_ivp(
         fun=lambda t, x0: PHFSI.PHModel(t, x0),
         obj=PHFSI,
@@ -148,62 +147,16 @@ def main():
         method='BDF',
         vectorized=False
     )
-    print(PHFSI.stat_pressure[0,-1])
-    print(PHFSI.stat_pressure[1, -1])
+    cons.save(PHFSI.stat_pressure, "\ph" + "_radius" + str(parameter['c']) + "_grad" + str(parameter['grad']) + "_Nsec" + str(
+        parameter['N_sec']) + "_length" + str(parameter['L']))
+
+
     plt.figure()
+    plt.plot(PHFSI.stat_pressure[:, -1])
     plt.title('stat pressure')
-    plt.plot(PHFSI.stat_pressure[:,-1])
-    # plt.figure()
-    # plt.title('Fluss')
-    # plt.plot(PHFSI.inp_val[0, :])
-    # plt.figure()
-    # plt.title('A_n')
-    # plt.plot(PHFSI.A_n)
-    # plt.figure()
-    # plt.title('density node')
-    # plt.plot(PHFSI.r_n_save[:,-1])
-    # plt.figure()
-    # plt.title('structure velocity ')
-    # plt.plot(PHFSI.H_i_st[:, -1])
-    # plt.figure()
-    # plt.title('fluid momentum')
-    # plt.plot(PHFSI.section_mom_save[:, -1])
-    # plt.figure()
-    # plt.title('mass node')
-    # plt.plot(PHFSI.mass_node_save[:, -1])
-    # plt.figure()
-    # plt.title('volume node')
-    # plt.plot(PHFSI.Volume_node_save[:, -1])
-    # plt.figure()
-    # plt.title('radius section')
-    # plt.plot(PHFSI.radius_sec_save[:, -1])
-    # plt.figure()
-    # plt.title('vol sec neu')
-    # plt.plot(PHFSI.V_sec[:, -1])
-    # plt.figure()
-    # plt.title('vol sec old')
-    # plt.plot(PHFSI.V_sec_old[:, -1])
-    # plt.figure()
-    # plt.title('contact area sec neu')
-    # plt.plot(PHFSI.A_c[:, -1])
-    # plt.figure()
-    # plt.title('contact area sec old')
-    # plt.plot(PHFSI.A_c_old[:, -1])
-    # plt.figure()
-    # plt.title('Fläche sec neu')
-    # plt.plot(PHFSI.A_sec[:, -1])
-    # plt.figure()
-    # plt.title('Fläche sec old')
-    # plt.plot(PHFSI.A_sec_old[:, -1])
-    # plt.figure()
-    # plt.title('Fläche Nodes neu')
-    # plt.plot(PHFSI.A_n[:, -1])
-    #
-    # plt.figure()
-    # plt.title('Fläche Nodes alt')
-    # plt.plot(PHFSI.A_n_old[:, -1])
     plt.show()
-    stop = True
+
+
 
 
 if __name__ == '__main__':

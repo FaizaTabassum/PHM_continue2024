@@ -33,9 +33,6 @@ def getNodesVolumes(section_radius, section_length, node_length):
     slope_left_node_part = slope[0:-1]  # slope_leftpart_node
     slope_right_node_part = slope[1:]  # slope_rightpart_node
     radius_at_mid_node = radius_section_start[1:]
-
-
-
     radius_node0_end = radius_section_start[0] + (node_length / 2) * slope_left_node_part[0]
     radius_node_start = radius_at_mid_node - (node_length / 2) * slope_left_node_part
     radius_node_end = radius_at_mid_node + (node_length / 2) * slope_right_node_part
@@ -49,9 +46,6 @@ def SquareOfPosSumVectors(vec1, vec2):
     return np.square(vec1) + 2*vec1*vec2 + np.square(vec2)
 def SquareOfNegSumVectors(vec1, vec2):
     return np.square(vec1) - 2*vec1*vec2 + np.square(vec2)
-
-
-
 
 def get_stenosis_c_sec(N_sec,L, c, s_grad):
     x0 = -L*100/2
@@ -95,13 +89,11 @@ def get_expansion_c_sec(N_sec,L, c, s_grad):
     m = (r_outlet - r_inlet) / (xf - x0)
     print("m: ", m)
     r = m * x + r_inlet
-    last_radius = m * (r[-1] - r[-2]) + r[-1]
+    last_radius = m*(x[-1]-x[-2]) + r[-1]
     return r / 100, last_radius/100
 
 class Model_Flow_Efficient:
     def __init__(self,pdic):
-        self.am1_0_vol = 1
-        self.am1_0_pd = 1
 
         self.inp_ent = pdic['inp']
         self.inp_ext = pdic['out']
@@ -151,8 +143,6 @@ class Model_Flow_Efficient:
             self.k_c_st = (pdic['beta_2'] * self.lambda_2 * np.pi * self.c * self.h / (self.l)) * np.ones(self.N_sec)  # coupling spring constant
 
 
-
-        self.geo_dissipation = pdic['geo_dissipation']
         self.vis_dissipation = pdic['vis_dissipation']
 
         self.m_st = np.multiply(np.pi * pdic['rho_st'] * self.c_sec,  pdic['h'] * self.l * np.ones(self.N_sec))
@@ -164,14 +154,15 @@ class Model_Flow_Efficient:
         volume_nodes_complete = np.hstack((self.volume_node0, self.volume_node_leftpart + self.volume_node_rightpart))
         self.m_n = np.multiply(pdic['rho_f'], volume_nodes_complete)
 
-
-        #self.m_n = np.multiply(pdic['rho_f'] * np.pi * np.square(self.c_sec),  self.l * 10 ** -3 * np.ones(self.N_nodes))
-        #self.m_n[0] = self.m_n[0] /2
         self.r_sec = pdic['rho_f']
         self.vf = pdic['vf']
         self.b_st = pdic['b_st']
 
 
+        self.phi = np.empty((self.N_nodes, int(self.samples)))
+        self.theta_rho = np.empty((self.N_nodes, int(self.samples)))
+
+        self.q_st_save = np.empty((self.N_nodes, int(self.samples)))
         self.dyn_pressure = np.empty((self.N_nodes, int(self.samples)))
         self.dyn_pressure_mmHg = np.empty((self.N_nodes, int(self.samples)))
         self.stat_pressure = np.empty((self.N_nodes, int(self.samples)))
@@ -196,184 +187,26 @@ class Model_Flow_Efficient:
         self.A_sec = np.empty((self.N_sec, int(self.samples)))
         self.A_sec_old = np.empty((self.N_sec, int(self.samples)))
         self.V_sec_old = np.empty((self.N_sec, int(self.samples)))
+        self.V_node = np.empty((self.N_sec, int(self.samples)))
         self.V_sec = np.empty((self.N_sec, int(self.samples)))
         self.A_n = np.empty((self.N_nodes, int(self.samples)))
         self.A_n_old = np.empty((self.N_nodes, int(self.samples)))
         self.A_c = np.empty((self.N_sec, int(self.samples)))
-        self.A_c_old = np.empty((self.N_sec, int(self.samples)))
-        self.A_circ = np.empty((self.N_sec, int(self.samples)))
+
+
         self.p_d = np.empty((self.N_nodes, int(self.samples)))
 
+        self.state_variable = np.empty((4*self.N_sec, int(self.samples)))
+
+
         self.H_q_st = np.empty((self.N_sec, int(self.samples)))
+
         self.H_i_st = np.empty((self.N_sec, int(self.samples)))
         self.H_i_sec = np.empty((self.N_sec, int(self.samples)))
         self.H_r_n = np.empty((self.N_nodes, int(self.samples)))
-
         self.L = pdic['L']
+        self.vis_dissipation_factor = pdic['vis_factor']
 
-        self.geo_dissipation_factor =pdic['geo_factor']
-        # *self.l / self.c_sec
-        self.vis_dissipation_factor = pdic['vis_factor']*2*self.l / self.c_sec
-
-    def PHModel_old(self, t, x):
-        u_p = np.concatenate(([float(self.inp_ent(t))], [self.inp_ext(t)]))
-        x = x.reshape(-1, )
-        q_st = x[0:self.N_sec]
-        i_st = x[self.N_sec:2 * self.N_sec]
-        i_sec = x[2 * self.N_sec:3 * self.N_sec]
-        r_n = x[3 * self.N_sec:]
-
-
-
-        A_sec = np.multiply(np.pi * self.c_sec,(q_st + self.c_sec))
-
-        alpha_1 = A_sec[1:-1] / (A_sec[1:-1] + A_sec[2:])  # check
-        alpha_2 = 1 - (A_sec[0:-2] / (A_sec[0:-2] + A_sec[1:-1]))  # check
-
-        V_sec = self.l * A_sec[1:-1] - (self.m_n[2:] / r_n[2:]) * alpha_1 - (
-                    self.m_n[1:-1] / r_n[1:-1]) * alpha_2  # check
-        V_sec = np.concatenate((np.reshape(
-            self.l * A_sec[0] - self.m_n[1] * (1 / r_n[1]) * (A_sec[0] / (A_sec[0] + A_sec[1])) - self.m_n[0] * (
-                    1 / r_n[0]) * float(self.am1_0_vol), (1,)), V_sec, np.reshape(
-            A_sec[-1] * self.l - self.m_n[-1] * (1 / r_n[-1]) * (1 - (A_sec[-2] / (A_sec[-2] + A_sec[-1]))),
-            (1,))))  # check
-
-        A_n = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0] )), (1,)),
-                         self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
-
-        A_c = V_sec / (q_st + self.c_sec)  # check
-
-        alpha = A_sec[0:-1] / (A_sec[0:-1] + A_sec[1:])
-
-        p_d = np.concatenate((np.reshape(
-            (1 * self.r_sec / 2) * np.square((u_p[0] / A_sec[0])) * self.am1_0_pd - (
-                    1 / (self.r_sec * 2)) * np.square((i_sec[0] / V_sec[0])) * self.am1_0_pd,
-            (1,)),
-                              (1 / (2 * self.r_sec)) * np.square(i_sec[0:-1] / V_sec[0:-1]) * alpha - (
-                                      1 / (2 * self.r_sec)) * np.square(i_sec[1:] / V_sec[1:]) * (
-                                      np.ones(len(alpha)) - alpha)))  # check
-
-        row1 = np.concatenate(
-            (np.reshape([self.k_st[0] + self.k_c_st[0], -self.k_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
-            axis=1)
-        matrix = np.concatenate((-np.diag(self.k_c_st[0:-2]), np.zeros((self.N_sec - 2, 2))), axis=1) + np.concatenate(
-            (np.zeros(
-                (self.N_sec - 2, 1)),
-             np.diag(self.k_st[1:-1]) + np.diag(self.k_c_st[0:-2]) + np.diag(self.k_c_st[1:-1]), np.zeros(
-                (self.N_sec - 2, 1))), axis=1) + np.concatenate(
-            (np.zeros((self.N_sec - 2, 2)), -np.diag(self.k_c_st[1:-1])), axis=1)
-        row2 = np.concatenate(
-            (np.zeros((1, self.N_sec - 2)), np.reshape([-self.k_c_st[-2], self.k_st[-1] + self.k_c_st[-2]], (1, 2))),
-            axis=1)
-
-        Cspring = np.concatenate((row1, matrix, row2), axis=0)
-        C_A_n = np.concatenate(
-            (np.concatenate((np.diag(A_n[0:-1]), np.zeros((self.N_sec - 1, 1))), axis=1) + np.concatenate(
-                (np.zeros((self.N_sec - 1, 1)), np.diag(A_n[1:])), axis=1),
-             np.hstack((np.zeros(self.N_sec - 1), A_n[-1])).reshape(1, -1)), axis=0)
-        H_q_st = np.dot(Cspring, q_st)  + A_c * (
-                    1 / (2 * self.r_sec)) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
-
-        H_i_st = i_st / self.m_st
-
-        H_i_sec = i_sec / (self.r_sec * V_sec)
-
-        log_A = np.array([self.b_st * np.log(r_n[i]/ self.r_sec) for i in range(0, self.N_sec, 1)])
-
-        H_r_n = (self.m_n / (np.square(r_n))) * (log_A + p_d)
-
-        C1 = np.identity(self.N_sec)
-        C2 = np.concatenate(
-            (np.zeros((1, self.N_sec)),
-             np.concatenate((np.identity(self.N_sec - 1), np.zeros((self.N_sec - 1, 1))), axis=1)))
-        C1_star = np.reshape(np.concatenate(([1], np.zeros(self.N_sec - 1))), (1, self.N_sec))
-        C1_star_help = np.reshape(np.zeros(self.N_sec), (1, self.N_sec))
-        C2_star = np.reshape(np.concatenate((np.zeros(self.N_sec - 1), [1])), (1, self.N_sec))
-
-        row1 = np.concatenate(
-            (np.reshape([self.d_st[0] + self.d_c_st[0], -self.d_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
-            axis=1)
-        matrix = np.concatenate((-np.diag(self.d_c_st[0:-2]), np.zeros((self.N_sec - 2, 2))), axis=1) + np.concatenate(
-            (np.zeros(
-                (self.N_sec - 2, 1)),
-             np.diag(self.d_st[1:-1]) + np.diag(self.d_c_st[0:-2]) + np.diag(self.d_c_st[1:-1]), np.zeros(
-                (self.N_sec - 2, 1))), axis=1) + np.concatenate(
-            (np.zeros((self.N_sec - 2, 2)), -np.diag(self.d_c_st[1:-1])), axis=1)
-        row2 = np.concatenate(
-            (np.zeros((1, self.N_sec - 2)), np.reshape([-self.d_c_st[-2], self.d_st[-1] + self.d_c_st[-2]], (1, 2))),
-            axis=1)
-
-        R_s = np.concatenate((row1, matrix, row2), axis=0)
-
-        loss_g = np.zeros((self.N_sec))
-        for k in range(0, self.N_sec - 1, 1):
-            if A_sec[k] <= A_sec[k + 1]:
-                angle = np.arctan((self.c_sec[k + 1] - self.c_sec[k]) / self.l)
-                if math.degrees(angle) <= 45:
-                    loss_g[k] = np.sin(angle/2) * (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-                else:
-                    loss_g[k] = (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-            else:
-                loss_g[k] = 0.5 * (1 - (A_sec[k + 1] / A_sec[k]))
-        loss_g[-1] = 1
-        loss_g = np.multiply(self.geo_dissipation_factor, loss_g)
-
-        if self.geo_dissipation == False:
-            loss_g = loss_g * 0
-
-        loss_vis = np.array(
-            [self.vf / (2*(self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
-             in range(0, self.N_sec, 1)])
-        loss_vis = np.multiply(loss_vis, self.vis_dissipation_factor)
-
-        if self.vis_dissipation == False:
-            loss_vis = loss_vis * 0
-
-        R_f_geo = np.diag(A_sec * loss_g * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f_vis = np.diag(A_sec * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f = R_f_geo + R_f_vis
-
-
-
-
-        theta_pi = np.diag(A_sec)
-        theta_rho = np.diag(np.square(r_n) / self.m_n)
-        g_An = np.diag(A_n[1:])
-        psi_pi = np.diag(A_c / 2)
-        varphi_pi = np.diag(i_sec / (self.c_sec + q_st))
-
-        g_An_1 = np.concatenate((g_An, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))), axis=1)
-        g_An_2 = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An), axis=1)
-
-        varphi_rho = np.dot(theta_rho, np.concatenate(
-            (np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_1 + g_An_2)))
-        phi = np.dot(theta_pi, np.dot(C1.T - C2.T, theta_rho.T))
-        theta = np.dot(theta_pi, np.concatenate((C1_star_help.T, -C2_star.T), axis=1))
-        varphi = varphi_rho + np.dot(theta_rho, np.dot((C2 + C1), psi_pi))
-        psi = np.dot(np.reshape(np.concatenate((C1_star_help.T, C2_star.T)), (2, self.N_sec)), psi_pi)
-        C = np.identity(self.N_sec)
-
-        gamma = np.concatenate((np.dot(theta_rho.T, C1_star.T), np.zeros((self.N_sec, 1))), axis=1)
-
-        J_R_1 = np.concatenate((np.zeros((self.N_sec, self.N_sec)), np.identity(self.N_sec),
-                                np.zeros((self.N_sec, self.N_sec)), np.zeros((self.N_sec, self.N_sec))), axis=1)
-        J_R_2 = np.concatenate((-np.identity(self.N_sec), -R_s, np.dot(C.T, varphi_pi.T), np.dot(C.T, varphi.T)),
-                               axis=1)
-        J_R_3 = np.concatenate((np.zeros((self.N_sec, self.N_sec)), np.dot(-varphi_pi, C), -R_f, phi), axis=1)
-        J_R_4 = np.concatenate(
-            (np.zeros((self.N_sec, self.N_sec)), np.dot(-varphi, C), -phi.T, np.zeros((self.N_sec, self.N_sec))),
-            axis=1)
-        J_R = np.concatenate((J_R_1, J_R_2, J_R_3, J_R_4))
-
-        g_P_1 = np.concatenate((np.zeros((self.N_sec, 2)), np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P_2 = np.concatenate((np.dot(C.T, psi.T), np.identity(self.N_sec)), axis=1)
-        g_P_3 = np.concatenate((theta, np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P_4 = np.concatenate((gamma, np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P = np.concatenate((g_P_1, g_P_2, g_P_3, g_P_4))
-        x_vec = np.concatenate((H_q_st, H_i_st, H_i_sec, H_r_n))
-        u = np.concatenate((u_p, self.u_e))
-        dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
-        return dxdt
     def PHModel(self, t, x):
         u_p = np.concatenate(([float(self.inp_ent(t))], [self.inp_ext(t)]))
         x = x.reshape(-1, )
@@ -382,21 +215,18 @@ class Model_Flow_Efficient:
         i_sec = x[2 * self.N_sec:3 * self.N_sec]
         r_n = x[3 * self.N_sec:]
 
-
-        A_sec = np.multiply(np.pi * self.c_sec, (q_st + self.c_sec))
-        A_cross_start = np.multiply(np.pi * (self.c_sec + q_st), (q_st + self.c_sec))
+        A_sec = np.multiply(np.pi * (q_st + self.c_sec), (q_st + self.c_sec))
 
         radius_section_start = self.c_sec + q_st
-        radius_section_end = np.hstack((self.c_sec[1:] + q_st[1:], self.last_radius))
+        radius_section_end = np.hstack((self.c_sec[1:] + q_st[1:], self.last_radius + q_st[-1]))
+
         section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
         radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
             section_radius_complete, self.l, self.length_node)
         l_node = self.length_node
-        r_node_end = radius_node_end
-        r_node_start = radius_node_start
-        r_node0_end = radius_node0_end
+        radius_node0_start = section_radius_complete[0]
 
-        alpha0_leftnode = (V_node_left_part[0] / (V_node_left_part[0] + V_node_right_part[0]))
+        alpha0_rightnode = (V_node0 / (V_node0 + V_node_right_part[0]))
         alpha_leftnode = (
                 V_node_left_part / (V_node_left_part + V_node_right_part))
         alpha_rightnode = (
@@ -413,7 +243,7 @@ class Model_Flow_Efficient:
                     np.square(radius_section_start[0]) + radius_section_start[0] * radius_section_end[
                 0] + np.square(radius_section_end[0])) - (
                     self.m_n[0] / r_n[0]) -
-            (self.m_n[1] / r_n[1]) * alpha0_leftnode, (1,)), V_sec,
+            (self.m_n[1] / r_n[1]) * alpha0_rightnode, (1,)), V_sec,
                                 np.reshape(
                                     1 / 3 * np.pi * self.l * (np.square(
                                         radius_section_start[-1]) + radius_section_start[-1] * radius_section_end[
@@ -421,48 +251,28 @@ class Model_Flow_Efficient:
                                             self.m_n[-1] / r_n[-1]) * alpha_rightnode[-1],
                                     (1,))))  # check
 
+        A_n = np.sqrt(np.square(radius_node_start) - 2 * radius_node_start * radius_node_end + np.square(
+            radius_node_end) + l_node ** 2) * (radius_node_start + radius_node_end) * np.pi
 
-        A_n = ((3 * self.m_n[1:] / (r_n[1:] * l_node)) * np.sqrt(
-            SquareOfNegSumVectors(r_node_end, r_node_start) + np.square(l_node)) * (r_node_start + r_node_end)) / (
-              (np.square(r_node_start) + r_node_start * r_node_end + np.square(r_node_end)))
-        A_n0 = ((3 * 2 * self.m_n[0] / (r_n[0] * l_node)) * np.sqrt(
-            SquareOfNegSumVectors(radius_section_start[0], r_node0_end) + np.square(l_node / 2)) * (
-                            radius_section_start[0] + r_node0_end)) / (
-                           np.square(radius_section_start[0]) + radius_section_start[0] * r_node0_end + np.square(
-                       r_node0_end))
+        A_n0 = np.sqrt(
+            np.square(radius_node0_start) - 2 * radius_node0_start * radius_node0_end + np.square(radius_node0_end) + (
+                    l_node / 2) ** 2) * (radius_node0_start + radius_node0_end) * np.pi
+
         A_n = np.hstack((A_n0, A_n))
-        #
+
         A_circ = (radius_section_start + radius_section_end) * np.pi * np.sqrt(
             SquareOfNegSumVectors(radius_section_end, radius_section_start) + np.square(self.l))
-        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
-        A_c = np.concatenate((np.reshape(A_circ[0] - A_n[0] - A_n[1] * alpha0_leftnode, (1,)), A_c_between,
-                                 np.reshape(A_circ[-1] - A_n[-1] * alpha_rightnode[-1], (1,))))
-        #
-        # alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        # alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        # A_c_old = np.hstack(
-        #     (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
-        #      np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
-        # A_c = np.hstack((np.reshape(
-        #     A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
-        #                  A_circ[1:-1] - A_n[1:-1] * (
-        #                          V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
-        #                                                                                                        2:] * (
-        #                          V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
-        #                  np.reshape(A_circ[-1] - A_n[-1] * (
-        #                          V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
-        #                             (-1,))))  # check
-        # A_c = A_circ
-        alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
 
-        ##hier ist ein Fehler##
-        p_d = np.concatenate((np.reshape(
-            (1 * self.r_sec / 2) * np.square((u_p[0] / A_cross_start[0])) * float(self.am1_0_pd) - (
-                    1 / (self.r_sec * 2)) * np.square((i_sec[0] / V_sec[0])) * float(self.am1_0_pd),
-            (1,)),
-                              (1 / (2 * self.r_sec)) * np.square(i_sec[0:-1] / V_sec[0:-1]) * alpha - (
-                                      1 / (2 * self.r_sec)) * np.square(i_sec[1:] / V_sec[1:]) * (
-                                      np.ones(len(alpha)) - alpha)))  # check
+        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
+        A_c = np.hstack((A_circ[0] - A_n[0] - A_n[1] * alpha0_rightnode, A_c_between,
+                         A_circ[-1] - A_n[-1] * alpha_rightnode[-1]))
+        A_cr_node_start = np.pi*radius_node_start**2
+        A_cr_node0_end = np.pi*radius_node0_end**2
+        A_cr_node_end = np.pi*radius_node_end**2
+        pd_node0 = self.r_sec *((i_sec[0]/(self.r_sec*V_sec[0]))*A_cr_node0_end - u_p[0])
+        pd_node = self.r_sec*((i_sec[1:]/(self.r_sec*V_sec[1:]))*A_cr_node_end-(i_sec[0:-1]/(self.r_sec*V_sec[0:-1]))*A_cr_node_start)
+        p_d = np.hstack((pd_node0, pd_node))
+
         row1 = np.concatenate(
             (np.reshape([self.k_st[0] + self.k_c_st[0], -self.k_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
             axis=1)
@@ -482,7 +292,7 @@ class Model_Flow_Efficient:
                 (np.zeros((self.N_sec - 1, 1)), np.diag(A_n[1:])), axis=1),
              np.hstack((np.zeros(self.N_sec - 1), A_n[-1])).reshape(1, -1)), axis=0)
         H_q_st = np.dot(Cspring, q_st) + A_c * (
-                1 / (2 * self.r_sec)) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
+                1 / (2 * np.square(self.r_sec))) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
 
         H_i_st = i_st / self.m_st
 
@@ -515,21 +325,6 @@ class Model_Flow_Efficient:
 
         R_s = np.concatenate((row1, matrix, row2), axis=0)
 
-        loss_g = np.zeros((self.N_sec))
-        for k in range(0, self.N_sec - 1, 1):
-            if A_sec[k] <= A_sec[k + 1]:
-                angle = np.arctan((self.c_sec[k + 1] - self.c_sec[k]) / self.l)
-                if math.degrees(angle) <= 45:
-                    loss_g[k] = np.sin(angle / 2) * (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-                else:
-                    loss_g[k] = (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-            else:
-                loss_g[k] = 0.5 * (1 - (A_sec[k + 1] / A_sec[k]))
-        loss_g[-1] = 1
-        loss_g = np.multiply(self.geo_dissipation_factor, loss_g)
-
-        if self.geo_dissipation == False:
-            loss_g = loss_g * 0
 
         loss_vis = np.array(
             [self.vf / (2 * (self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
@@ -539,24 +334,50 @@ class Model_Flow_Efficient:
         if self.vis_dissipation == False:
             loss_vis = loss_vis * 0
 
-        R_f_geo = np.diag(A_sec * loss_g * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f_vis = np.diag(A_sec * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f = R_f_geo + R_f_vis
+
+
+        R_f = np.diag(A_c * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
 
         theta_pi = np.diag(A_sec)
         theta_rho = np.diag(np.square(r_n) / self.m_n)
-        g_An = np.diag(A_n[1:])
+
         psi_pi = np.diag(A_c / 2)
         varphi_pi = np.diag(i_sec / (self.c_sec + q_st))
 
-        g_An_1 = np.concatenate((g_An, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))), axis=1)
-        g_An_2 = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An), axis=1)
+        A_n_leftnode = np.sqrt(
+            np.square(radius_node_start) - 2 * radius_node_start * radius_section_start[1:] + np.square(
+                radius_section_start[1:]) + (l_node / 2) ** 2) * (radius_node_start + radius_section_start[1:]) * np.pi
+        A_n_rightnode = np.sqrt(
+            np.square(radius_section_start[1:]) - 2 * radius_section_start[1:] * radius_node_end + np.square(
+                radius_node_end) + (l_node / 2) ** 2) * (radius_section_start[1:] + radius_node_end) * np.pi
 
-        varphi_rho = np.dot(theta_rho, np.concatenate(
-            (np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_1 + g_An_2)))
+        alpha_theta_rho_left = A_n_leftnode / (A_n_rightnode + A_n_leftnode)
+        alpha_theta_rho_right = A_n_rightnode / (A_n_rightnode + A_n_leftnode)
+        theta_rho_left = np.diag(np.square(r_n[1:] * alpha_theta_rho_left) / (self.m_n[1:] * alpha_theta_rho_left))
+        theta_rho_left = np.concatenate((theta_rho_left, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))),
+                                        axis=1)
+        theta_rho_left = np.concatenate((np.zeros(self.N_sec).reshape(1, -1), theta_rho_left))
+        theta_rho_right = np.diag(np.square(r_n[1:] * alpha_theta_rho_left) / (self.m_n[1:] * alpha_theta_rho_right))
+        theta_rho_right = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), theta_rho_right),
+                                         axis=1)
+        theta_rho_right = np.concatenate(
+            (np.hstack((r_n[0] ** 2 / self.m_n[0], np.zeros(self.N_sec - 1))).reshape(1, -1), theta_rho_right))
+
+        g_An_leftnode = np.diag(A_n_leftnode)
+        g_An_rightnode = np.diag(A_n_rightnode)
+        g_An_left = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An_leftnode), axis=1)
+        g_An_left = np.concatenate(
+            (np.hstack((np.zeros(self.N_sec))).reshape(1, -1), g_An_left))
+        g_An_right = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An_rightnode), axis=1)
+        g_An_right = np.concatenate((np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_right))
+
+        varphi_rho = np.dot(theta_rho_left, g_An_left) + np.dot(theta_rho_right, g_An_right)
+
         phi = np.dot(theta_pi, np.dot(C1.T - C2.T, theta_rho.T))
         theta = np.dot(theta_pi, np.concatenate((C1_star_help.T, -C2_star.T), axis=1))
         varphi = varphi_rho + np.dot(theta_rho, np.dot((C2 + C1), psi_pi))
+
+
         psi = np.dot(np.reshape(np.concatenate((C1_star_help.T, C2_star.T)), (2, self.N_sec)), psi_pi)
         C = np.identity(self.N_sec)
 
@@ -578,222 +399,12 @@ class Model_Flow_Efficient:
         g_P_4 = np.concatenate((gamma, np.zeros((self.N_sec, self.N_sec))), axis=1)
         g_P = np.concatenate((g_P_1, g_P_2, g_P_3, g_P_4))
         x_vec = np.concatenate((H_q_st, H_i_st, H_i_sec, H_r_n))
-
         u = np.concatenate((u_p, self.u_e))
         dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
         return dxdt
     def Jacobi(self, t, x):
         return 0
 
-    def get_IntermediateResults_old(self, t, x, i):
-        u_p = np.concatenate(([float(self.inp_ent(t))], [self.inp_ext(t)]))
-        x = x.reshape(-1, )
-        q_st = x[0:self.N_sec]
-        i_st = x[self.N_sec:2 * self.N_sec]
-        i_sec = x[2 * self.N_sec:3 * self.N_sec]
-        r_n = x[3 * self.N_sec:]
-
-        A_sec = np.multiply(np.pi * self.c_sec, (q_st + self.c_sec))
-
-        alpha_1 = A_sec[1:-1] / (A_sec[1:-1] + A_sec[2:])  # check
-        alpha_2 = 1 - (A_sec[0:-2] / (A_sec[0:-2] + A_sec[1:-1]))  # check
-
-        V_sec = self.l * A_sec[1:-1] - (self.m_n[2:] / r_n[2:]) * alpha_1 - (
-                self.m_n[1:-1] / r_n[1:-1]) * alpha_2  # check
-        V_sec = np.concatenate((np.reshape(
-            self.l * A_sec[0] - self.m_n[1] * (1 / r_n[1]) * (A_sec[0] / (A_sec[0] + A_sec[1])) - self.m_n[0] * (
-                    1 / r_n[0]) * float(self.am1_0_vol), (1,)), V_sec, np.reshape(
-            A_sec[-1] * self.l - self.m_n[-1] * (1 / r_n[-1]) * (1 - (A_sec[-2] / (A_sec[-2] + A_sec[-1]))),
-            (1,))))  # check
-
-        A_n = np.hstack((np.reshape(self.m_n[0] / (r_n[0] * (self.c_sec[0] + q_st[0])), (1,)),
-                         self.m_n[1:] / (r_n[1:] * (2 * self.c_sec[1:] + q_st[0:-1] + q_st[1:]))))  # check
-
-        A_c = V_sec / (q_st + self.c_sec)  # check
-
-        alpha = A_sec[0:-1] / (A_sec[0:-1] + A_sec[1:])
-
-        p_d = np.concatenate((np.reshape(
-            (1 * self.r_sec / 2) * np.square((u_p[0] / A_sec[0])) * self.am1_0_pd - (
-                    1 / (self.r_sec * 2)) * np.square((i_sec[0] / V_sec[0])) * self.am1_0_pd,
-            (1,)),
-                              (1 / (2 * self.r_sec)) * np.square(i_sec[0:-1] / V_sec[0:-1]) * alpha - (
-                                      1 / (2 * self.r_sec)) * np.square(i_sec[1:] / V_sec[1:]) * (
-                                      np.ones(len(alpha)) - alpha)))  # check
-
-        row1 = np.concatenate(
-            (np.reshape([self.k_st[0] + self.k_c_st[0], -self.k_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
-            axis=1)
-        matrix = np.concatenate((-np.diag(self.k_c_st[0:-2]), np.zeros((self.N_sec - 2, 2))), axis=1) + np.concatenate(
-            (np.zeros(
-                (self.N_sec - 2, 1)),
-             np.diag(self.k_st[1:-1]) + np.diag(self.k_c_st[0:-2]) + np.diag(self.k_c_st[1:-1]), np.zeros(
-                (self.N_sec - 2, 1))), axis=1) + np.concatenate(
-            (np.zeros((self.N_sec - 2, 2)), -np.diag(self.k_c_st[1:-1])), axis=1)
-        row2 = np.concatenate(
-            (np.zeros((1, self.N_sec - 2)), np.reshape([-self.k_c_st[-2], self.k_st[-1] + self.k_c_st[-2]], (1, 2))),
-            axis=1)
-
-        Cspring = np.concatenate((row1, matrix, row2), axis=0)
-        C_A_n = np.concatenate(
-            (np.concatenate((np.diag(A_n[0:-1]), np.zeros((self.N_sec - 1, 1))), axis=1) + np.concatenate(
-                (np.zeros((self.N_sec - 1, 1)), np.diag(A_n[1:])), axis=1),
-             np.hstack((np.zeros(self.N_sec - 1), A_n[-1])).reshape(1, -1)), axis=0)
-        H_q_st = np.dot(Cspring, q_st) + A_c * (
-                1 / (2 * self.r_sec)) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
-
-        H_i_st = i_st / self.m_st
-
-        H_i_sec = i_sec / (self.r_sec * V_sec)
-
-        log_A = np.array([self.b_st * np.log(r_n[i] / self.r_sec) for i in range(0, self.N_sec, 1)])
-
-        H_r_n = (self.m_n / (np.square(r_n))) * (log_A + p_d)
-
-        C1 = np.identity(self.N_sec)
-        C2 = np.concatenate(
-            (np.zeros((1, self.N_sec)),
-             np.concatenate((np.identity(self.N_sec - 1), np.zeros((self.N_sec - 1, 1))), axis=1)))
-        C1_star = np.reshape(np.concatenate(([1], np.zeros(self.N_sec - 1))), (1, self.N_sec))
-        C1_star_help = np.reshape(np.zeros(self.N_sec), (1, self.N_sec))
-        C2_star = np.reshape(np.concatenate((np.zeros(self.N_sec - 1), [1])), (1, self.N_sec))
-
-        row1 = np.concatenate(
-            (np.reshape([self.d_st[0] + self.d_c_st[0], -self.d_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
-            axis=1)
-        matrix = np.concatenate((-np.diag(self.d_c_st[0:-2]), np.zeros((self.N_sec - 2, 2))), axis=1) + np.concatenate(
-            (np.zeros(
-                (self.N_sec - 2, 1)),
-             np.diag(self.d_st[1:-1]) + np.diag(self.d_c_st[0:-2]) + np.diag(self.d_c_st[1:-1]), np.zeros(
-                (self.N_sec - 2, 1))), axis=1) + np.concatenate(
-            (np.zeros((self.N_sec - 2, 2)), -np.diag(self.d_c_st[1:-1])), axis=1)
-        row2 = np.concatenate(
-            (np.zeros((1, self.N_sec - 2)), np.reshape([-self.d_c_st[-2], self.d_st[-1] + self.d_c_st[-2]], (1, 2))),
-            axis=1)
-
-        R_s = np.concatenate((row1, matrix, row2), axis=0)
-
-        loss_g = np.zeros((self.N_sec))
-        for k in range(0, self.N_sec - 1, 1):
-            if A_sec[k] <= A_sec[k + 1]:
-                angle = np.arctan((self.c_sec[k + 1] - self.c_sec[k]) / self.l)
-                if math.degrees(angle) <= 45:
-                    loss_g[k] = np.sin(angle / 2) * (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-                else:
-                    loss_g[k] = (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-            else:
-                loss_g[k] = 0.5 * (1 - (A_sec[k + 1] / A_sec[k]))
-        loss_g[-1] = 1
-        loss_g = np.multiply(self.geo_dissipation_factor, loss_g)
-
-        if self.geo_dissipation == False:
-            loss_g = loss_g * 0
-
-        loss_vis = np.array(
-            [self.vf / (2 * (self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
-             in range(0, self.N_sec, 1)])
-        loss_vis = np.multiply(loss_vis, self.vis_dissipation_factor)
-
-        if self.vis_dissipation == False:
-            loss_vis = loss_vis * 0
-
-        R_f_geo = np.diag(A_sec * loss_g * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f_vis = np.diag(A_sec * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f = R_f_geo + R_f_vis
-
-        print("angle: ", math.degrees(np.arctan((self.c_sec[1] - self.c_sec[0]) / self.l)))
-        print("geometrical loss: ", loss_g[0])
-        print("viscous loss: ", loss_vis[0], " ", loss_vis[int(self.N_sec/2)], " ", loss_vis[-1])
-        print("geometrical total loss: ", R_f_geo[0,0])
-        print("viscous total loss: ", R_f_vis[int(self.N_sec/2), int(self.N_sec/2)])
-        print("total loss: ", R_f[int(self.N_sec/2), int(self.N_sec/2)])
-
-        theta_pi = np.diag(A_sec)
-        theta_rho = np.diag(np.square(r_n) / self.m_n)
-        g_An = np.diag(A_n[1:])
-        psi_pi = np.diag(A_c / 2)
-        varphi_pi = np.diag(i_sec / (self.c_sec + q_st))
-
-        g_An_1 = np.concatenate((g_An, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))), axis=1)
-        g_An_2 = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An), axis=1)
-
-        varphi_rho = np.dot(theta_rho, np.concatenate(
-            (np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_1 + g_An_2)))
-        phi = np.dot(theta_pi, np.dot(C1.T - C2.T, theta_rho.T))
-        theta = np.dot(theta_pi, np.concatenate((C1_star_help.T, -C2_star.T), axis=1))
-        varphi = varphi_rho + np.dot(theta_rho, np.dot((C2 + C1), psi_pi))
-        psi = np.dot(np.reshape(np.concatenate((C1_star_help.T, C2_star.T)), (2, self.N_sec)), psi_pi)
-        C = np.identity(self.N_sec)
-
-        gamma = np.concatenate((np.dot(theta_rho.T, C1_star.T), np.zeros((self.N_sec, 1))), axis=1)
-
-        J_R_1 = np.concatenate((np.zeros((self.N_sec, self.N_sec)), np.identity(self.N_sec),
-                                np.zeros((self.N_sec, self.N_sec)), np.zeros((self.N_sec, self.N_sec))), axis=1)
-        J_R_2 = np.concatenate((-np.identity(self.N_sec), -R_s, np.dot(C.T, varphi_pi.T), np.dot(C.T, varphi.T)),
-                               axis=1)
-        J_R_3 = np.concatenate((np.zeros((self.N_sec, self.N_sec)), np.dot(-varphi_pi, C), -R_f, phi), axis=1)
-        J_R_4 = np.concatenate(
-            (np.zeros((self.N_sec, self.N_sec)), np.dot(-varphi, C), -phi.T, np.zeros((self.N_sec, self.N_sec))),
-            axis=1)
-        J_R = np.concatenate((J_R_1, J_R_2, J_R_3, J_R_4))
-
-        g_P_1 = np.concatenate((np.zeros((self.N_sec, 2)), np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P_2 = np.concatenate((np.dot(C.T, psi.T), np.identity(self.N_sec)), axis=1)
-        g_P_3 = np.concatenate((theta, np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P_4 = np.concatenate((gamma, np.zeros((self.N_sec, self.N_sec))), axis=1)
-        g_P = np.concatenate((g_P_1, g_P_2, g_P_3, g_P_4))
-        x_vec = np.concatenate((H_q_st, H_i_st, H_i_sec, H_r_n))
-        u = np.concatenate((u_p, self.u_e))
-        dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
-
-        y = np.dot(g_P.T, x_vec)
-
-
-
-        self.A_sec[:,i] = A_sec
-
-        self.V_sec[:,i] = V_sec
-        self.A_n[:,i] = A_n
-        self.A_c[:,i] = A_c
-
-        self.H_q_st[:,i] = H_q_st
-        self.H_i_st[:,i] = H_i_st
-        self.H_i_sec[:,i] = H_i_sec
-        self.H_r_n[:,i] = H_r_n
-
-
-        self.stat_pressure[:, i] = log_A
-        self.stat_pressure_mmHg[:, i] = log_A/self.mmHgFactor
-        self.dyn_pressure[:,i] = p_d
-        self.dyn_pressure_mmHg[:, i] = p_d/self.mmHgFactor
-        self.total_pressure[:,i] = log_A + p_d
-        self.total_pressure_mmHg[:, i] = (log_A/self.mmHgFactor)+(p_d/self.mmHgFactor)
-        self.inp_val[i, 0] = float(self.inp_ent(t))
-        self.inp_val[i, 1] = float(self.inp_ext(t))
-        self.out_val[i, 0] = y[0]
-        self.out_val[i, 1] = y[1]
-
-
-        H_st = 0
-        for j in range(0, self.N_sec - 1):
-            H_st = H_st + 0.5 * (i_st[j] ** 2 / self.m_st[j]) + 0.5 * self.k_st[j] * q_st[j] ** 2 + 0.5 * self.k_c_st[
-                j] * (q_st[j] - q_st[j + 1]) ** 2
-        H_st = H_st + 0.5 * (i_st[self.N_sec - 1] ** 2 / self.m_st[self.N_sec - 1]) + 0.5 * self.k_st[self.N_sec - 1] * \
-               q_st[self.N_sec - 1] ** 2
-        self.H_st[i] = H_st
-
-        H_fl = 0
-        for j in range(0, self.N_sec):
-            H_fl = H_fl + 0.5 * (i_sec[j] ** 2 / (self.r_sec * V_sec[j]))
-        self.H_fl[i] = H_fl
-
-        E_fl = 0
-        for j in range(0, self.N_nodes):
-            E_fl = E_fl + self.m_n[j] * self.b_st * (
-                        (r_n[j] - self.r_sec * (1 + np.log(r_n[j] / self.r_sec))) / (r_n[j] * self.r_sec))
-        self.E_fl[i] = E_fl
-
-        return (t,float(self.inp_ent(t)))
     def get_IntermediateResults(self, t, x, i):
         u_p = np.concatenate(([float(self.inp_ent(t))], [self.inp_ext(t)]))
         x = x.reshape(-1, )
@@ -801,40 +412,36 @@ class Model_Flow_Efficient:
         i_st = x[self.N_sec:2 * self.N_sec]
         i_sec = x[2 * self.N_sec:3 * self.N_sec]
         r_n = x[3 * self.N_sec:]
-        A_sec = np.multiply(np.pi * self.c_sec, (q_st + self.c_sec))
 
-        A_cross_start = np.multiply(np.pi * (self.c_sec + q_st), (q_st + self.c_sec))
+        A_sec = np.multiply(np.pi * (q_st + self.c_sec), (q_st + self.c_sec))
 
         radius_section_start = self.c_sec + q_st
-        radius_section_end = np.hstack((self.c_sec[1:]+q_st[1:], self.last_radius))
+        radius_section_end = np.hstack((self.c_sec[1:] + q_st[1:], self.last_radius + q_st[-1]))
+
         section_radius_complete = np.hstack((self.c_sec + q_st, self.last_radius + q_st[-1]))
         radius_node0_end, radius_node_start, radius_node_end, V_node0, V_node_left_part, V_node_right_part = getNodesVolumes(
             section_radius_complete, self.l, self.length_node)
         l_node = self.length_node
-        r_node_end = radius_node_end
-        r_node_start = radius_node_start
-        r_node0_end = radius_node0_end
-        V_node0_left = V_node0
-        volume_node_complete = np.hstack((V_node0, V_node_left_part+V_node_right_part))
-        alpha0_leftnode = (V_node_left_part[0] / (V_node_left_part[0] + V_node_right_part[0]))
+        radius_node0_start = section_radius_complete[0]
+
+        alpha0_rightnode = (V_node0 / (V_node0 + V_node_right_part[0]))
         alpha_leftnode = (
-                        V_node_left_part / (V_node_left_part + V_node_right_part))
-        alpha_rightnode =(
-                        V_node_right_part / (V_node_right_part + V_node_left_part))
+                V_node_left_part / (V_node_left_part + V_node_right_part))
+        alpha_rightnode = (
+                V_node_right_part / (V_node_right_part + V_node_left_part))
 
         V_sec = 1 / 3 * np.pi * self.l * (
                 np.square(radius_section_start[1:-1]) + radius_section_start[1:-1] * radius_section_end[
-                                                                                         1:-1] + np.square(
+                                                                                     1:-1] + np.square(
             radius_section_end[1:-1])) - (self.m_n[2:] / r_n[2:]) * alpha_leftnode[1:] - (
                         self.m_n[1:-1] / r_n[1:-1]) * alpha_rightnode[0:-1]
 
-
         V_sec = np.concatenate((np.reshape(
             1 / 3 * np.pi * self.l * (
-                        np.square(radius_section_start[0]) + radius_section_start[0] * radius_section_end[
-                    0] + np.square(radius_section_end[0])) - (
+                    np.square(radius_section_start[0]) + radius_section_start[0] * radius_section_end[
+                0] + np.square(radius_section_end[0])) - (
                     self.m_n[0] / r_n[0]) -
-            (self.m_n[1] / r_n[1]) * alpha0_leftnode, (1,)), V_sec,
+            (self.m_n[1] / r_n[1]) * alpha0_rightnode, (1,)), V_sec,
                                 np.reshape(
                                     1 / 3 * np.pi * self.l * (np.square(
                                         radius_section_start[-1]) + radius_section_start[-1] * radius_section_end[
@@ -842,47 +449,29 @@ class Model_Flow_Efficient:
                                             self.m_n[-1] / r_n[-1]) * alpha_rightnode[-1],
                                     (1,))))  # check
 
-        A_n = ((3 * self.m_n[1:] / (r_n[1:] * l_node)) * np.sqrt(
-            SquareOfNegSumVectors(r_node_end, r_node_start) + np.square(l_node)) * (r_node_start + r_node_end)) / (
-                  (np.square(r_node_start) + r_node_start * r_node_end + np.square(r_node_end)))
-        A_n0 = ((3 * 2 * self.m_n[0] / (r_n[0] * l_node)) * np.sqrt(
-            SquareOfNegSumVectors(radius_section_start[0], r_node0_end) + np.square(l_node / 2)) * (
-                        radius_section_start[0] + r_node0_end)) / (
-                       np.square(radius_section_start[0]) + radius_section_start[0] * r_node0_end + np.square(
-                   r_node0_end))
+        A_n = np.sqrt(np.square(radius_node_start) - 2 * radius_node_start * radius_node_end + np.square(
+            radius_node_end) + l_node ** 2) * (radius_node_start + radius_node_end) * np.pi
+
+        A_n0 = np.sqrt(
+            np.square(radius_node0_start) - 2 * radius_node0_start * radius_node0_end + np.square(radius_node0_end) + (
+                    l_node / 2) ** 2) * (radius_node0_start + radius_node0_end) * np.pi
+
         A_n = np.hstack((A_n0, A_n))
-        #
+
         A_circ = (radius_section_start + radius_section_end) * np.pi * np.sqrt(
             SquareOfNegSumVectors(radius_section_end, radius_section_start) + np.square(self.l))
-        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
-        A_c = np.concatenate((np.reshape(A_circ[0] - A_n[0] - A_n[1] * alpha0_leftnode, (1,)), A_c_between,
-                              np.reshape(A_circ[-1] - A_n[-1] * alpha_rightnode[-1], (1,))))
-        #
-        # alpha_2 = V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        # alpha_1 = V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])
-        # A_c_old = np.hstack(
-        #     (np.reshape(A_circ[0] - A_n[0], (1,)), A_circ[1:-1] - A_n[1:-1] * alpha_2 - A_n[2:] * alpha_1,
-        #      np.reshape(A_circ[-1] - A_n[-1] * alpha_2[-1], (-1,))))  # check
-        # A_c = np.hstack((np.reshape(
-        #     A_circ[0] - A_n[0] - A_n[1] * (V_node_left_part[0] / (V_node_right_part[0] + V_node_left_part[0])), (1,)),
-        #                  A_circ[1:-1] - A_n[1:-1] * (
-        #                          V_node_right_part[0:-1] / (V_node_right_part[0:-1] + V_node_left_part[1:])) - A_n[
-        #                                                                                                        2:] * (
-        #                          V_node_left_part[1:] / (V_node_right_part[0:-1] + V_node_left_part[1:])),
-        #                  np.reshape(A_circ[-1] - A_n[-1] * (
-        #                          V_node_right_part[-1] / (V_node_right_part[-1] + V_node_left_part[-1])),
-        #                             (-1,))))  # check
-        # A_c = A_circ
-        alpha = V_node_left_part / (V_node_right_part + V_node_left_part)
 
-        ##hier ist ein Fehler##
-        p_d = np.concatenate((np.reshape(
-            (1 * self.r_sec / 2) * np.square((u_p[0] / A_cross_start[0])) * float(self.am1_0_pd) - (
-                    1 / (self.r_sec * 2)) * np.square((i_sec[0] / V_sec[0])) * float(self.am1_0_pd),
-            (1,)),
-                              (1 / (2 * self.r_sec)) * np.square(i_sec[0:-1] / V_sec[0:-1]) * alpha - (
-                                      1 / (2 * self.r_sec)) * np.square(i_sec[1:] / V_sec[1:]) * (
-                                      np.ones(len(alpha)) - alpha)))  # check
+        A_c_between = A_circ[1:-1] - A_n[1:-1] * alpha_rightnode[0:-1] - A_n[2:] * alpha_leftnode[1:]
+        A_c = np.hstack((A_circ[0] - A_n[0] - A_n[1] * alpha0_rightnode, A_c_between,
+                         A_circ[-1] - A_n[-1] * alpha_rightnode[-1]))
+        A_cr_node_start = np.pi * radius_node_start ** 2
+        A_cr_node0_end = np.pi * radius_node0_end ** 2
+        A_cr_node_end = np.pi * radius_node_end ** 2
+        pd_node0 = self.r_sec * ((i_sec[0] / (self.r_sec * V_sec[0])) * A_cr_node0_end - u_p[0])
+        pd_node = self.r_sec * ((i_sec[1:] / (self.r_sec * V_sec[1:])) * A_cr_node_end - (
+                    i_sec[0:-1] / (self.r_sec * V_sec[0:-1])) * A_cr_node_start)
+        p_d = np.hstack((pd_node0, pd_node))
+
         row1 = np.concatenate(
             (np.reshape([self.k_st[0] + self.k_c_st[0], -self.k_c_st[0]], (1, 2)), np.zeros((1, self.N_sec - 2))),
             axis=1)
@@ -902,7 +491,7 @@ class Model_Flow_Efficient:
                 (np.zeros((self.N_sec - 1, 1)), np.diag(A_n[1:])), axis=1),
              np.hstack((np.zeros(self.N_sec - 1), A_n[-1])).reshape(1, -1)), axis=0)
         H_q_st = np.dot(Cspring, q_st) + A_c * (
-                1 / (2 * self.r_sec)) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
+                1 / (2 * np.square(self.r_sec))) * np.square(i_sec / V_sec) + np.dot(C_A_n, p_d)
 
         H_i_st = i_st / self.m_st
 
@@ -935,22 +524,6 @@ class Model_Flow_Efficient:
 
         R_s = np.concatenate((row1, matrix, row2), axis=0)
 
-        loss_g = np.zeros((self.N_sec))
-        for k in range(0, self.N_sec - 1, 1):
-            if A_sec[k] <= A_sec[k + 1]:
-                angle = np.arctan((self.c_sec[k + 1] - self.c_sec[k]) / self.l)
-                if math.degrees(angle) <= 45:
-                    loss_g[k] = np.sin(angle / 2) * (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-                else:
-                    loss_g[k] = (1 - (A_sec[k] / A_sec[k + 1])) ** 2
-            else:
-                loss_g[k] = 0.5 * (1 - (A_sec[k + 1] / A_sec[k]))
-        loss_g[-1] = 1
-        loss_g = np.multiply(self.geo_dissipation_factor, loss_g)
-
-        if self.geo_dissipation == False:
-            loss_g = loss_g * 0
-
         loss_vis = np.array(
             [self.vf / (2 * (self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
              in range(0, self.N_sec, 1)])
@@ -959,24 +532,47 @@ class Model_Flow_Efficient:
         if self.vis_dissipation == False:
             loss_vis = loss_vis * 0
 
-        R_f_geo = np.diag(A_sec * loss_g * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f_vis = np.diag(A_sec * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-        R_f = R_f_geo + R_f_vis
+        R_f = np.diag(A_c * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
 
         theta_pi = np.diag(A_sec)
         theta_rho = np.diag(np.square(r_n) / self.m_n)
-        g_An = np.diag(A_n[1:])
+
         psi_pi = np.diag(A_c / 2)
         varphi_pi = np.diag(i_sec / (self.c_sec + q_st))
 
-        g_An_1 = np.concatenate((g_An, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))), axis=1)
-        g_An_2 = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An), axis=1)
+        A_n_leftnode = np.sqrt(
+            np.square(radius_node_start) - 2 * radius_node_start * radius_section_start[1:] + np.square(
+                radius_section_start[1:]) + (l_node / 2) ** 2) * (radius_node_start + radius_section_start[1:]) * np.pi
+        A_n_rightnode = np.sqrt(
+            np.square(radius_section_start[1:]) - 2 * radius_section_start[1:] * radius_node_end + np.square(
+                radius_node_end) + (l_node / 2) ** 2) * (radius_section_start[1:] + radius_node_end) * np.pi
 
-        varphi_rho = np.dot(theta_rho, np.concatenate(
-            (np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_1 + g_An_2)))
+        alpha_theta_rho_left = A_n_leftnode / (A_n_rightnode + A_n_leftnode)
+        alpha_theta_rho_right = A_n_rightnode / (A_n_rightnode + A_n_leftnode)
+        theta_rho_left = np.diag(np.square(r_n[1:] * alpha_theta_rho_left) / (self.m_n[1:] * alpha_theta_rho_left))
+        theta_rho_left = np.concatenate((theta_rho_left, np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1))),
+                                        axis=1)
+        theta_rho_left = np.concatenate((np.zeros(self.N_sec).reshape(1, -1), theta_rho_left))
+        theta_rho_right = np.diag(np.square(r_n[1:] * alpha_theta_rho_left) / (self.m_n[1:] * alpha_theta_rho_right))
+        theta_rho_right = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), theta_rho_right),
+                                         axis=1)
+        theta_rho_right = np.concatenate(
+            (np.hstack((r_n[0] ** 2 / self.m_n[0], np.zeros(self.N_sec - 1))).reshape(1, -1), theta_rho_right))
+
+        g_An_leftnode = np.diag(A_n_leftnode)
+        g_An_rightnode = np.diag(A_n_rightnode)
+        g_An_left = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An_leftnode), axis=1)
+        g_An_left = np.concatenate(
+            (np.hstack((np.zeros(self.N_sec))).reshape(1, -1), g_An_left))
+        g_An_right = np.concatenate((np.reshape(np.zeros(self.N_sec - 1), (self.N_sec - 1, 1)), g_An_rightnode), axis=1)
+        g_An_right = np.concatenate((np.hstack(([A_n[0]], np.zeros(self.N_sec - 1))).reshape(1, -1), g_An_right))
+
+        varphi_rho = np.dot(theta_rho_left, g_An_left) + np.dot(theta_rho_right, g_An_right)
+
         phi = np.dot(theta_pi, np.dot(C1.T - C2.T, theta_rho.T))
         theta = np.dot(theta_pi, np.concatenate((C1_star_help.T, -C2_star.T), axis=1))
         varphi = varphi_rho + np.dot(theta_rho, np.dot((C2 + C1), psi_pi))
+
         psi = np.dot(np.reshape(np.concatenate((C1_star_help.T, C2_star.T)), (2, self.N_sec)), psi_pi)
         C = np.identity(self.N_sec)
 
@@ -1002,55 +598,31 @@ class Model_Flow_Efficient:
         dxdt = np.dot(J_R, x_vec) + np.dot(g_P, u)
         y = np.dot(g_P.T, x_vec)
 
+        self.state_variable[:, i] = dxdt
+        self.radius_sec_save[:, i] = self.c_sec +q_st
+        self.r_n_save[:, i] = r_n
+        self.q_st_save[:, i] = q_st
+        self.section_mom_save[:, i] = i_sec
+        self.wall_mom_save[:, i] = i_st
         self.A_sec[:, i] = A_sec
-        self.V_sec[:, i] = V_sec
         self.A_n[:, i] = A_n
-#        self.A_n_old[:,i] = A_n_old
         self.A_c[:, i] = A_c
-#        self.A_c_old[:, i] = A_c_old
-        #self.A_circ[:, i] = A_circ
-
+        self.V_sec[:, i] = V_sec
         self.H_q_st[:, i] = H_q_st
         self.H_i_st[:, i] = H_i_st
         self.H_i_sec[:, i] = H_i_sec
         self.H_r_n[:, i] = H_r_n
-
         self.stat_pressure[:, i] = log_A
         self.stat_pressure_mmHg[:, i] = log_A / self.mmHgFactor
-        self.r_n_save[:, i] = r_n
-        self.section_mom_save[:, i] = i_sec
-        self.wall_mom_save[:, i] = i_st
         self.mass_node_save[:, i] = self.m_n
-        self.radius_sec_save[:, i] = q_st
-        self.Volume_node_save[:, i] = volume_node_complete
         self.dyn_pressure[:, i] = p_d
         self.dyn_pressure_mmHg[:, i] = p_d / self.mmHgFactor
         self.total_pressure[:, i] = log_A + p_d
         self.total_pressure_mmHg[:, i] = (log_A / self.mmHgFactor) + (p_d / self.mmHgFactor)
-        print('der Fluss ist:', float(self.inp_ent(t)))
         self.inp_val[i, 0] = float(self.inp_ent(t))
         self.inp_val[i, 1] = float(self.inp_ext(t))
         self.out_val[i, 0] = y[0]
         self.out_val[i, 1] = y[1]
-
-        H_st = 0
-        for j in range(0, self.N_sec - 1):
-            H_st = H_st + 0.5 * (i_st[j] ** 2 / self.m_st[j]) + 0.5 * self.k_st[j] * q_st[j] ** 2 + 0.5 * self.k_c_st[
-                j] * (q_st[j] - q_st[j + 1]) ** 2
-        H_st = H_st + 0.5 * (i_st[self.N_sec - 1] ** 2 / self.m_st[self.N_sec - 1]) + 0.5 * self.k_st[self.N_sec - 1] * \
-               q_st[self.N_sec - 1] ** 2
-        self.H_st[i] = H_st
-
-        H_fl = 0
-        for j in range(0, self.N_sec):
-            H_fl = H_fl + 0.5 * (i_sec[j] ** 2 / (self.r_sec * V_sec[j]))
-        self.H_fl[i] = H_fl
-
-        E_fl = 0
-        for j in range(0, self.N_nodes):
-            E_fl = E_fl + self.m_n[j] * self.b_st * (
-                    (r_n[j] - self.r_sec * (1 + np.log(r_n[j] / self.r_sec))) / (r_n[j] * self.r_sec))
-        self.E_fl[i] = E_fl
 
         return (t, float(self.inp_ent(t)))
 
