@@ -72,8 +72,8 @@ class constraints:
 
 @profile
 def main():
-    N_sec = 31
-    N_nodes = 31
+    N_sec = 51
+    N_nodes = 51
     time_plot = 0.5
     sample_time = 1e-03
     path_save = r'C:\Users\Faiza\Desktop\PHM_continue2024\results'
@@ -86,7 +86,9 @@ def main():
 
     t_ev = np.ndarray.tolist(np.linspace(0, time_plot, int(cons.samples)))
 
-    parameter = {
+    parameter_without_stent = {
+        'stent': False,
+        'factor_stent': 1,
         'stenosis': False,
         'expansion': True,
         'grad': 100,
@@ -95,7 +97,7 @@ def main():
         'vis_dissipation': True,
         'inp': cons.inp_const,
         'out': cons.out_const,
-        'L': 20 * 10 ** -2,
+        'L': 5 * 10 ** -2,
         'c': 1* 10 ** -2,
         'h': 3 * 10 ** -4,
 
@@ -122,17 +124,54 @@ def main():
         'mmHgFactor': 133.322368421,
         'stiff_wall': True,
     }
+    parameter_with_stent = {
+        'stent': True,
+        'factor_stent': 10,
+        'stenosis': False,
+        'expansion': True,
+        'grad': 100,
+        'FEM': True,
+        'vis_factor': 16,
+        'vis_dissipation': True,
+        'inp': cons.inp_const,
+        'out': cons.out_const,
+        'L': 5 * 10 ** -2,
+        'c': 1 * 10 ** -2,
+        'h': 3 * 10 ** -4,
 
-    
+        'N_sec': N_sec,
+        'N_nodes': N_nodes,
+        't_ev': t_ev,
+        'samples': cons.samples,
+        'beta_1': 1.1,
+        'beta_2': 8.5 * 10 ** (-5),
+        'lame1': 1.7 * 10 ** 6,
+        'lame2': 5.75 * 10 ** 5,
+        'rho_f': 1.06 * 10 ** 3,
+        'vf': 0.004,
+        'rho_st': 1.1 * 10 ** 3,
+        'poi_rat': 0.4,
+        'E_mod': 3 * 10 ** 5,
+        'd_st': 0,
+        'd_c_st': 0,
+        'b_st': 2.15 * 10 ** 9,
+        'u_e': np.zeros(N_sec),
+        'k1': 1 * 10 ** 10,
+        'k2': -20,
+        'k3': 1 * 10 ** 9,
+        'mmHgFactor': 133.322368421,
+        'stiff_wall': True,
+    }
 
 
-    PHFSI = func.Model_Flow_Efficient(parameter)
+    PHFSI1 = func.Model_Flow_Efficient(parameter_without_stent)
+    PHFSI2 = func.Model_Flow_Efficient(parameter_with_stent)
     T = [0, time_plot]
-    x_init = np.concatenate((np.zeros(3*N_sec), parameter['rho_f']*np.ones(N_nodes))).reshape(-1,)
+    x_init = np.concatenate((np.zeros(3*N_sec), parameter_without_stent['rho_f']*np.ones(N_nodes))).reshape(-1,)
     
-    sol = solve_ivp(
-        fun=lambda t, x0: PHFSI.PHModel(t, x0),
-        obj=PHFSI,
+    sol1 = solve_ivp(
+        fun=lambda t, x0: PHFSI1.PHModel(t, x0),
+        obj=PHFSI1,
         t_span=T,
         t_eval=t_ev,
         min_step=sample_time,
@@ -147,13 +186,72 @@ def main():
         method='BDF',
         vectorized=False
     )
-    cons.save(PHFSI.stat_pressure, "\ph" + "_radius" + str(parameter['c']) + "_grad" + str(parameter['grad']) + "_Nsec" + str(
-        parameter['N_sec']) + "_length" + str(parameter['L']))
 
+    sol2 = solve_ivp(
+        fun=lambda t, x0: PHFSI2.PHModel(t, x0),
+        obj=PHFSI2,
+        t_span=T,
+        t_eval=t_ev,
+        min_step=sample_time,
+        max_step=sample_time,
+        y0=x_init,
+        first_step=None,
+        hmax=sample_time,
+        hmin=sample_time,
+        rtol=10 ** (-3),
+        atol=10 ** (-6),
+        dense_output=False,
+        method='BDF',
+        vectorized=False
+    )
+
+    cons.save(PHFSI1.stat_pressure, "\ph" + "_radius" + str(parameter_without_stent['c']) + "_grad" + str(parameter_without_stent['grad']) + "_Nsec" + str(
+        parameter_without_stent['N_sec']) + "_length" + str(parameter_without_stent['L']))
+
+    x_achse = np.linspace(0, 5, 51)
 
     plt.figure()
-    plt.plot(PHFSI.stat_pressure[:, -1])
+    plt.plot(x_achse, PHFSI1.c_sec + PHFSI1.q_st_save[:, -1], color = 'b')
+    plt.plot(x_achse, PHFSI2.c_sec + PHFSI2.q_st_save[:, -1], color='gray')
+    plt.ylabel('tube diameter [m]')
+    plt.xlabel('tube length [cm]')
+    plt.title('vessel real geometry')
+
+    plt.figure()
+    plt.plot(PHFSI1.stat_pressure[:, -1], color = 'b')
+    plt.plot(PHFSI2.stat_pressure[:, -1], color='gray')
     plt.title('stat pressure')
+
+    plt.figure()
+    plt.plot(x_achse, PHFSI1.H_i_sec[:, -1], color = 'blue')
+    plt.plot(x_achse, PHFSI2.H_i_sec[:, -1], color='gray')
+    plt.title('velocity')
+    plt.annotate(PHFSI1.H_i_sec[0, -1],
+                 xy=(0, PHFSI1.H_i_sec[0, -1]), xycoords='data',
+                 xytext=(-70, -50), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.annotate(PHFSI1.H_i_sec[-1, -1],
+                 xy=(5, PHFSI1.H_i_sec[-1, -1]), xycoords='data',
+                 xytext=(-100, -65), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.annotate(PHFSI1.H_i_sec[-1, -1],
+                 xy=(2.5, PHFSI1.H_i_sec[int(N_sec/2), -1]), xycoords='data',
+                 xytext=(-100, 20), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.annotate(PHFSI2.H_i_sec[0, -1],
+                 xy=(0, PHFSI2.H_i_sec[0, -1]), xycoords='data',
+                 xytext=(-70, -40), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.annotate(PHFSI2.H_i_sec[-1, -1],
+                 xy=(5, PHFSI2.H_i_sec[-1, -1]), xycoords='data',
+                 xytext=(-100, -55), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.annotate(PHFSI2.H_i_sec[-1, -1],
+                 xy=(2.5, PHFSI2.H_i_sec[int(N_sec / 2), -1]), xycoords='data',
+                 xytext=(-100, 40), textcoords='offset points', fontsize=10,
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3, rad=.2"))
+    plt.xlabel('tube length [cm]')
+    plt.ylabel('fluid velocity [m/s]')
     plt.show()
 
 

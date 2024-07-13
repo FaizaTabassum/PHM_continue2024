@@ -129,12 +129,27 @@ class Model_Flow_Efficient:
         self.lambda_2 = pdic['lame2']
 
         if pdic['FEM'] == True:
-            self.k_st = np.array([(self.poi_rat / ((1 - 2 * self.poi_rat) * (1 + self.poi_rat))) * (self.l / np.pi) * (
-                        self.k1 * (np.exp(self.k2 * (self.c_sec[i]))) + self.k3 ) for i in range(self.N_sec)])
-            self.k_st = self.k_st[0]*np.ones(self.N_sec)
-            self.k_c_st = np.array([0.5 * (
-                        self.k1 * (np.exp(self.k2 * (self.c_sec[i])))+ self.k3) * (np.pi * np.square(self.c_sec[i]) / self.l) * (1 / (1 + self.poi_rat)) for i in range(self.N_sec)])
-            self.k_c_st = self.k_c_st[0]*np.ones(self.N_sec)
+            if pdic['stent'] == True:
+                first_part = np.array([(self.poi_rat / ((1 - 2 * self.poi_rat) * (1 + self.poi_rat))) * (self.l / np.pi) * (
+                            self.k1 * (np.exp(self.k2 * (self.c_sec[i]))) + self.k3 ) for i in range(int(self.N_sec/2- int(0.10*self.N_sec/2)))])
+                middle_part = self.k_st = np.array([pdic['factor_stent']*(self.poi_rat / ((1 - 2 * self.poi_rat) * (1 + self.poi_rat))) * (self.l / np.pi) * (
+                            self.k1 * (np.exp(self.k2 * (self.c_sec[i]))) + self.k3 ) for i in range(int(0.20*self.N_sec/2))])
+
+                last_part = first_part
+                self.k_st = np.hstack((first_part, middle_part, last_part))
+
+            else:
+                self.k_st = np.array(
+                    [(self.poi_rat / ((1 - 2 * self.poi_rat) * (1 + self.poi_rat))) * (self.l / np.pi) * (
+                            self.k1 * (np.exp(self.k2 * (self.c_sec[i]))) + self.k3) for i in
+                     range(int(self.N_sec))])
+                # self.k_c_st = np.array([0.5 * (
+                #             self.k1 * (np.exp(self.k2 * (self.c_sec[i])))+ self.k3) * (np.pi * np.square(self.c_sec[i]) / self.l) * (1 / (1 + self.poi_rat)) for i in range(self.N_sec)])
+                # self.k_c_st = self.k_c_st[0]*np.ones(self.N_sec)
+
+            self.k_c_st = self.k_st
+
+
         elif pdic['stiff_wall'] == True:
             self.k_c_st = pdic['kc_stiff']*np.ones(self.N_sec)
             self.k_st = pdic['k_stiff']*np.ones(self.N_sec)
@@ -142,7 +157,11 @@ class Model_Flow_Efficient:
             self.k_st = (pdic['beta_1'] * self.lambda_1 * self.l * self.h / (np.pi * self.c)) * np.ones(self.N_sec)
             self.k_c_st = (pdic['beta_2'] * self.lambda_2 * np.pi * self.c * self.h / (self.l)) * np.ones(self.N_sec)  # coupling spring constant
 
-
+        plt.plot(self.k_st)
+        plt.title('radial stiffness')
+        plt.figure()
+        plt.plot(self.k_c_st)
+        plt.title('longitudinal stiffness')
         self.vis_dissipation = pdic['vis_dissipation']
 
         self.m_st = np.multiply(np.pi * pdic['rho_st'] * self.c_sec,  pdic['h'] * self.l * np.ones(self.N_sec))
@@ -326,8 +345,9 @@ class Model_Flow_Efficient:
         R_s = np.concatenate((row1, matrix, row2), axis=0)
 
 
+
         loss_vis = np.array(
-            [self.vf / (2 * (self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
+            [self.vf / (2 * (self.c_sec[i] + q_st[i]) * (np.abs(i_sec[i] / (self.r_sec * V_sec[i]))) * self.r_sec) if i_sec[i] != 0 else 0 for i
              in range(0, self.N_sec, 1)])
         loss_vis = np.multiply(loss_vis, self.vis_dissipation_factor)
 
@@ -337,6 +357,8 @@ class Model_Flow_Efficient:
 
 
         R_f = np.diag(A_c * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
+        R_f_test = A_c[0]*loss_vis[0]*self.r_sec*(1/2)*(np.abs(i_sec[0] / (self.r_sec * V_sec[0])))
+        R_f_test1 = -self.vf*8*np.pi*self.l
 
         theta_pi = np.diag(A_sec)
         theta_rho = np.diag(np.square(r_n) / self.m_n)
@@ -525,7 +547,7 @@ class Model_Flow_Efficient:
         R_s = np.concatenate((row1, matrix, row2), axis=0)
 
         loss_vis = np.array(
-            [self.vf / (2 * (self.c_sec[i] + q_st[i]) * np.abs(H_i_sec[i]) * self.r_sec) if H_i_sec[i] != 0 else 0 for i
+            [self.vf / (2 * (self.c_sec[i] + q_st[i]) * (np.abs(i_sec[i] / (self.r_sec * V_sec[i]))) * self.r_sec) if i_sec[i] != 0 else 0 for i
              in range(0, self.N_sec, 1)])
         loss_vis = np.multiply(loss_vis, self.vis_dissipation_factor)
 
@@ -533,7 +555,8 @@ class Model_Flow_Efficient:
             loss_vis = loss_vis * 0
 
         R_f = np.diag(A_c * loss_vis * (1 * self.r_sec / 2) * (np.abs(i_sec / (self.r_sec * V_sec))))
-
+        R_f_test = A_c[0] * loss_vis[0] * self.r_sec * (1 / 2) * (np.abs(i_sec[0] / (self.r_sec * V_sec[0])))
+        R_f_test1 = -self.vf * 8 * np.pi * self.l
         theta_pi = np.diag(A_sec)
         theta_rho = np.diag(np.square(r_n) / self.m_n)
 

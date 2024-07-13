@@ -12,8 +12,14 @@ def interpolate_to_n_points(array, line, n_points):
 
 def load_p(dir):
     import os.path
-    p = np.loadtxt(dir+'_p.csv', delimiter=",", skiprows=1)[1:, 0]
-    return p / 10
+    import csv
+    p = 0
+    with open(dir+'_p.csv') as csvdatei:
+        csv_reader_object = csv.DictReader(csvdatei)
+        for row in csv_reader_object:
+            p = np.hstack((p, float(row['pressure'])))
+    #p = np.loadtxt(dir+'_p.csv', skiprows=1, delimiter=",")[1:, 0]
+    return p[1:] / 10
 
 def load_p_vel(dir):
     import os.path
@@ -38,7 +44,7 @@ def get_p(dir, n_points):
 
 def get_p_vel_PH(dir, timepoint):
     arr = np.load(dir, allow_pickle=True)[()]
-    return arr[:, timepoint], arr[:, timepoint]
+    return arr[:, -1], arr[:, -1]
 
 
 def compare_diff_p_ph_sv(description, path_ph, path_sv, n_sections):
@@ -58,7 +64,7 @@ def compare_p_ph_sv(description, path_ph, path_sv, n_sections, factor, color, l)
         plt.plot(np.linspace(0, l, len(p_sv)), factor*p_sv, color = color,linestyle = 'dashed', label="sv, " + description)
         plt.plot(np.linspace(0, l, n_sections+1), factor*p_ph, color = color, label="ph, " + description)
     else:
-        plt.plot(np.linspace(0, l, len(p_sv)), -factor * p_sv, color=color, linestyle='dashed',label="sv, " + description)
+        plt.plot(np.linspace(0, l, len(p_sv)), factor * p_sv, color=color, linestyle='dashed',label="sv, " + description)
         plt.plot(np.linspace(0, l, n_sections + 1), factor * p_ph, color=color, label="ph, " + description)
 
 def compare_p_quotient_ph_sv(description, path_ph, path_sv, n_sections):
@@ -79,10 +85,10 @@ N = [31, 61, 91]
 
 R = [1, 0.002, 0.004]
 L = [5, 0.04, 0.05]
-G = [0]
+G = [0,2,4]
 Q = [125]
-title = ['angle = 2°', 'angle = 4°', 'angle = 6°', 'angle = 8°', 'angle = 10°']
-title = ['0.0001mL', '0.001mL', '0.01mL', '0.1mL']
+title = ['angle = 0°', 'angle = 2°', 'angle = 4°', 'angle = 8°', 'angle = 10°']
+#title = ['0.0001mL', '0.001mL', '0.01mL', '0.1mL']
 ph_results_path=r'C:\Users\Faiza\Desktop\PHM_continue2024\results'
 sv_results_path =r'C:\Users\Faiza\Desktop\PHM_continue2024\results'
 
@@ -94,7 +100,7 @@ N_constant = 31
 N_constant_sv = 31
 L_constant = 5
 Q_constant = 125
-entities = 1
+entities = 3
 color = ["black", "blue", "green", "red", "orange", "gray"]
 
 factor =10
@@ -105,8 +111,8 @@ for case in ['grad']:
     for i in range(entities):
         if case == 'grad':
             ph_tocompare_path = f'{ph_results_path}\{r}{str(R_constant)}l{str(L_constant)}g{str(G[i])}f{str(Q_constant)}.npy'
-            # sv_tocompare_path = f'{sv_results_path}\{r}{str(R_constant)}l{str(L_constant)}g{str(G[i])}f{str(Q_constant)}'
-            sv_tocompare_path = f'{sv_results_path}\straight_20cmlong'
+            sv_tocompare_path = f'{sv_results_path}\{r}{str(R_constant)}l{str(L_constant)}g{str(G[i])}f{str(Q_constant)}'
+            #sv_tocompare_path = f'{sv_results_path}\straight_5cmlong'
             compare_p_ph_sv(title[i], ph_tocompare_path, sv_tocompare_path, N_constant, factor, color[i], L_constant)
     plt.legend()
     if factor== 0.0075006156130264:

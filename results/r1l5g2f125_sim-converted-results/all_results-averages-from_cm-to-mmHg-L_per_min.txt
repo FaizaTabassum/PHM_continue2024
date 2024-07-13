@@ -1,0 +1,3 @@
+Face	Pavg	Qavg	Pmin	Pmin_Time	Pmax	Pmax_Time	Qmin	Qmin_Time	Qmax	Qmax_Time
+inlet	nan	-7.258065	0.000000	00000	0.209439	00100	-7.500000	00100	-0.000019	00000
+outlet	nan	nan	0.000000	00000	0.010948	00100	0.000019	00000	7.500014	00300
